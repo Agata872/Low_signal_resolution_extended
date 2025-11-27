@@ -37,7 +37,7 @@ This project provides tools for managing and performing distributed beamforming 
 ## 🚀 Measurement Workflow
 
 
-### Reference Signel generator:
+### Reference Signal generator:
 
 ```bash
 python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --duration 1e8 --channels 0 --wave-freq 0e5 --wave-ampl 0.8 --gain 70
@@ -45,7 +45,7 @@ python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --d
 
 ### On the server:
 
-1. **Kill and pull latest code:**
+1. **Kill and pull the latest code:**
 
    ```bash
    ansible-playbook -i inventory.yaml kill.yml -f40
@@ -64,11 +64,6 @@ python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --d
    bash client/run_experiment.sh
    ```
 
-4. **Start TX/RX orchestration:**
-
-   ```bash
-   python3 Measure/double-pilot/combingTxRx.py
-   ```
 
 ---
 
@@ -80,7 +75,7 @@ python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --d
 export PYTHONPATH="/usr/local/lib/python3.11/site-packages:$PYTHONPATH"
 ```
 
-2. **If do it on the ceilling Tiles:*
+2. **If do it on the ceiling Tiles:*
 
 ```bash
 export PYTHONPATH="/usr/local/lib/python3/dist-packages:$PYTHONPATH""
@@ -89,8 +84,5 @@ export PYTHONPATH="/usr/local/lib/python3/dist-packages:$PYTHONPATH""
 
 ## 🧪 TODO
 
-* ✅ Add M01 cable and configure TX board accordingly
-* 🔧 Extend `BF-server.py` to also:
-
-  * Compute a second beamforming weight
-  * Enable **zero forcing** via CSI combination
+* ✅ Validate the downlink transmission phase stability
+* 🔧 Validate the reciprocity-based calibration
