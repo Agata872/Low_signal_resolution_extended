@@ -36,6 +36,13 @@ This project provides tools for managing and performing distributed beamforming 
 
 ## 🚀 Measurement Workflow
 
+
+### Reference Signel generator:
+
+```bash
+python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --duration 1e8 --channels 0 --wave-freq 0e5 --wave-ampl 0.8 --gain 70
+```
+
 ### On the server:
 
 1. **Kill and pull latest code:**
