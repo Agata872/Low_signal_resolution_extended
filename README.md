@@ -55,13 +55,13 @@ python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --d
 2. **Start synchronization server:**
 
    ```bash
-   python3 Measure/double-pilot/sync-server.py
+   python3 Server/sync-server.py
    ```
 
 3. **Start beamforming server:**
 
    ```bash
-   python3 Measure/double-pilot/BF-server.py
+   bash client/run_experiment.sh
    ```
 
 4. **Start TX/RX orchestration:**
