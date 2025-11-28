@@ -47,7 +47,7 @@ python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --d
 
 1. **Kill and pull the latest code:**
 
-   ```bash
+   ```ansible
    ansible-playbook -i inventory.yaml kill.yml -f40
    ansible-playbook -i inventory.yaml pull_code.yml -f40
    ansible -i inventory.yaml Test -m ansible.builtin.shell -a "pkill -f python3"
@@ -61,8 +61,8 @@ python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --d
 
 3. **Start beamforming server:**
 
-   ```bash
-   bash client/run_experiment.sh
+   ```ansible
+   ansible-playbook -i inventory.yaml comp.yml -f40
    ```
 
 
