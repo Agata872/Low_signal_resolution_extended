@@ -50,6 +50,7 @@ python3 examples/tx_waveforms.py  --args "type=b200" --freq 920e6 --rate 1e6 --d
    ```bash
    ansible-playbook -i inventory.yaml kill.yml -f40
    ansible-playbook -i inventory.yaml pull_code.yml -f40
+   ansible -i inventory.yaml Test -m ansible.builtin.shell -a "pkill -f python3"
    ```
 
 2. **Start synchronization server:**
