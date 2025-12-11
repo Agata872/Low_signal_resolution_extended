@@ -1,5 +1,5 @@
 import numpy as np
-rng = np.random.default_rng(1234)
+rng = np.random.default_rng(1232)
 # ============================================================
 #  QAM Modulation / Demodulation
 # ============================================================
@@ -289,16 +289,6 @@ def compress_mulaw_block(data, bit_width, mod_order_tag=None, mu=200.0):
     recon = phase * decomp_amp * max_val
     meta_bits = 0  # ignore metadata overhead here
     return recon, meta_bits
-
-
-# ---------- 4) Modulation "Compression" (Lossless Placeholder) ----------
-
-def modulation_compression(data, bit_width, mod_order_tag):
-    """
-    Ideal, lossless "modulation-based compression" placeholder.
-    In simulation we simply return the original data.
-    """
-    return data.copy(), 0
 
 
 # ============================================================

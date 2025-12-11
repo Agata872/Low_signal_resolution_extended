@@ -4,6 +4,7 @@
 ORAN Fronthaul Compression BLER Simulation
 
 Methods:
+- Uncompressed (baseline, no compression)
 - BFP (Block Floating Point)
 - BlockScaling (Block Scaling)
 - MuLaw (μ-law based compression)
@@ -15,8 +16,10 @@ Channel modes:
 
 Author: (adapted for Tianzheng)
 """
+
+import numpy as np
 import matplotlib.pyplot as plt
-from tool import *
+from tool import *  # 里边应包含 rng, qam_mod, qam_demod, compress_* 等
 
 
 # ============================================================
@@ -34,17 +37,25 @@ def simulate_bler_all(
     N_sym_per_tb=50,
 ):
     """
-    Simulate BLER for four compression methods:
-    BFP, BlockScaling, MuLaw, Modulation (lossless).
-
-    Returns:
-        methods: list of method names
-        mod_order_tags: tuple of modulation tags (2,16,64)
-        bitwidths: tuple of bit widths
-        snr_db_vec: SNR grid
-        BLER: array shape (n_methods, n_mod, n_bw, n_snr)
+    Simulate BLER for:
+    - Uncompressed baseline
+    - BFP, BlockScaling, MuLaw, Modulation (lossless placeholder).
     """
-    methods = ["BFP", "BlockScaling", "MuLaw", "Modulation"]
+
+    # ---- 允许标量传入 ----
+    if isinstance(mod_order_tags, (int, np.integer)):
+        mod_order_tags = (mod_order_tags,)
+    else:
+        mod_order_tags = tuple(mod_order_tags)
+
+    if isinstance(bitwidths, (int, np.integer)):
+        bitwidths = (bitwidths,)
+    else:
+        bitwidths = tuple(bitwidths)
+
+    snr_db_vec = np.asarray(snr_db_vec, dtype=float)
+
+    methods = ["Uncompressed", "BFP", "BlockScaling", "MuLaw"]
     n_methods = len(methods)
     n_mod = len(mod_order_tags)
     n_bw = len(bitwidths)
@@ -90,6 +101,15 @@ def simulate_bler_all(
                     H = generate_channel(mode, M_AP, K_UE, layout=layout)
                     V = uplink_mmse_combiner(H, noise_var)
 
+                    # === 新增：计算每个用户的等效增益 g_k ===
+                    g = np.zeros(K_UE, dtype=complex)
+                    for k in range(K_UE):
+                        # vdot 会对第一个参数做共轭，所以相当于 v_k^H h_k
+                        g[k] = np.vdot(V[:, k], H[:, k])
+                        # 避免极端数值问题
+                        if np.abs(g[k]) < 1e-12:
+                            g[k] = 1e-12 + 0j
+
                     tb_error = np.zeros(n_methods, dtype=bool)
 
                     # 3) Transmit each symbol time in the TB
@@ -106,24 +126,28 @@ def simulate_bler_all(
                                 continue
 
                             # Apply fronthaul compression at RU side
-                            if method == "BFP":
+                            if method == "Uncompressed":
+                                y_comp = y
+                            elif method == "BFP":
                                 y_comp, _ = compress_bfp_block(y, bw, mod_tag)
                             elif method == "BlockScaling":
                                 y_comp, _ = compress_bsc_block(y, bw, mod_tag)
                             elif method == "MuLaw":
                                 y_comp, _ = compress_mulaw_block(y, bw, mod_tag)
-                            elif method == "Modulation":
-                                y_comp, _ = modulation_compression(y, bw, mod_tag)
                             else:
                                 raise ValueError("Unknown method.")
 
                             # CPU side combining
                             r = V.conj().T @ y_comp  # (K,)
 
-                            # Demodulate each user
+                            # === 新增：对每个用户做幅度归一化后再解调 ===
                             any_error = False
                             for k in range(K_UE):
-                                bits_hat = qam_demod(np.array([r[k]]), M_qam)[0]
+                                s_eff = r[k] / g[k]          # equalized symbol
+                                bits_hat = qam_demod(
+                                    np.array([s_eff]),
+                                    M_qam
+                                )[0]
                                 if np.any(bits_hat != bits_tx[k, t, :]):
                                     any_error = True
                                     break
@@ -147,8 +171,12 @@ def plot_bler_results(methods, mod_order_tags, bitwidths, snr_db_vec, BLER,
     """
     Plot BLER vs SNR for different methods, for each (mod_tag, bitwidth) pair.
     Only BLER curves are plotted (no CR/EVM).
+
+    支持 methods 中包含 "Uncompressed" 基线。
     """
     n_methods = len(methods)
+    snr_db_vec = np.asarray(snr_db_vec, dtype=float)
+
     for imod, mod_tag in enumerate(mod_order_tags):
         for ibw, bw in enumerate(bitwidths):
             plt.figure()
@@ -175,8 +203,7 @@ def plot_bler_results(methods, mod_order_tags, bitwidths, snr_db_vec, BLER,
             if save_prefix is not None:
                 fname = f"{save_prefix}_mod{mod_tag}_bw{bw}.png"
                 # plt.savefig(fname, dpi=150)
-            # 如果不想自动弹窗可以注释掉 show
-            # plt.show()
+            # plt.show()  # 由主程序统一 plt.show()
 
 
 # ============================================================
@@ -187,13 +214,16 @@ if __name__ == "__main__":
     # 模式选择: "mimo" 或 "cellfree"
     MODE = "cellfree"   # 改成 "mimo" 可切换集中式 MIMO
 
-    # 基本参数
-    M_AP = 8
-    K_UE = 2
-    MOD_ORDER_TAGS = (16, 64)   # 2->QPSK, 16-QAM, 64-QAM
-    # BITWIDTHS = (8, 10, 12, 14)
-    BITWIDTHS = (8, 10)
-    SNR_DB_VEC = np.arange(80, 101, 4)  # 0,4,8,...,20 dB
+    # ========= 这里可以是单场景 =========
+    # 例如：只验证 QPSK + 4bit 压缩：
+    MOD_ORDER_TAGS = 2
+    BITWIDTHS = 4
+
+    # 当前示例：16 / 64 QAM + 8 / 10 bit
+    # MOD_ORDER_TAGS = (16, 64)     # 2->QPSK, 16-QAM, 64-QAM
+    # BITWIDTHS = (8, 10)
+
+    SNR_DB_VEC = np.arange(60, 81, 4)
 
     NTRIALS = 500       # 每个 (mod, bw, snr) 的 TB 次数
     N_SYM_PER_TB = 50   # 每个 TB 内的符号数
@@ -201,8 +231,8 @@ if __name__ == "__main__":
     print("Starting BLER simulation ...")
     methods, mod_tags, bws, snrs, BLER = simulate_bler_all(
         mode=MODE,
-        M_AP=M_AP,
-        K_UE=K_UE,
+        M_AP=8,
+        K_UE=2,
         mod_order_tags=MOD_ORDER_TAGS,
         bitwidths=BITWIDTHS,
         snr_db_vec=SNR_DB_VEC,
