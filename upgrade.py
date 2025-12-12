@@ -217,7 +217,7 @@ if __name__ == "__main__":
     # ========= 这里可以是单场景 =========
     # 例如：只验证 QPSK + 4bit 压缩：
     MOD_ORDER_TAGS = 2
-    BITWIDTHS = 4
+    BITWIDTHS = 6
 
     # 当前示例：16 / 64 QAM + 8 / 10 bit
     # MOD_ORDER_TAGS = (16, 64)     # 2->QPSK, 16-QAM, 64-QAM
