@@ -2,434 +2,547 @@
 # -*- coding: utf-8 -*-
 
 """
-仿真 DD-MIMO 上行场景中 O-RAN 压缩算法对 BLER 的影响
+Compression Analysis for 5G/O-RAN Fronthaul (Python version, no Deep Learning)
 
-包含算法：
-1) 无压缩（baseline）
-2) Block Scaling (BS)
-3) Block Floating Point (BFP)
-4) μ-law 压缩
-5) Uniform 量化
+This script is a faithful Python counterpart of the MATLAB-style workflow you shared,
+but with the critical modulation-label fix applied:
 
-依赖: numpy, matplotlib
+- BPSK  -> modOrder = 2
+- QPSK  -> modOrder = 4
+- 16-QAM-> modOrder = 16
+- 64-QAM-> modOrder = 64
+
+It generates the SAME types of figures as your MATLAB code (excluding deep learning):
+1) Subplots (one per method): CR vs EVM
+2) Combined plot: CR vs EVM for all methods
+3) Bar chart: Average EVM per method
+4) Subplots (one per method): CR vs Bitwidth
+
+Block-size selection note (important for fairness and O-RAN consistency):
+- In O-RAN/NR fronthaul compression, quantization parameters (scale/exponent/shift)
+  are commonly shared over a PRB-level granularity. A PRB spans 12 subcarriers per
+  OFDM symbol. Therefore we set blockSize = 12 for ALL modulation orders.
+- This decouples block granularity from modulation format and ensures fair CR–EVM
+  comparisons across compression schemes.
+
+Dependencies: numpy, matplotlib
+Run: python compression_analysis.py
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-# 固定随机种子，便于复现
+
+# -----------------------------
+# Reproducibility
+# -----------------------------
 rng = np.random.default_rng(42)
 
 
-# ================= QAM 调制 / 解调 ================= #
+# -----------------------------
+# QAM/BPSK Modulation (UnitAveragePower style)
+# -----------------------------
+def constellation_unit_power(M: int) -> np.ndarray:
+    """
+    Returns constellation points with unit average power.
+    Supports:
+      - M=2 (BPSK)
+      - Square QAM: 4,16,64,256,...
+    """
+    if M == 2:
+        # BPSK: {+1, -1}, already unit power
+        return np.array([1 + 0j, -1 + 0j], dtype=np.complex128)
 
-def qam_constellation(M: int) -> np.ndarray:
-    """
-    生成正方形 M-QAM 星座，平均功率归一化为 1
-    使用自然二进制映射（不是 Gray 码）
-    """
     m_side = int(np.sqrt(M))
-    if m_side ** 2 != M:
-        raise ValueError("Only square QAM is supported, e.g., 4,16,64,256.")
+    if m_side * m_side != M:
+        raise ValueError("Only BPSK (M=2) and square QAM (4,16,64,...) are supported.")
 
-    # 一维坐标: -(m_side-1),..., -1,1,...,(m_side-1)
-    re_im_vals = np.arange(-(m_side - 1), m_side, 2)
-    xv, yv = np.meshgrid(re_im_vals, re_im_vals)
-    const = xv + 1j * yv  # 笛卡尔积
+    levels = np.arange(-(m_side - 1), m_side, 2)
+    xv, yv = np.meshgrid(levels, levels)
+    const = (xv + 1j * yv).flatten().astype(np.complex128)
 
-    const = const.flatten()  # 大小 M 的一维数组
-    # 归一化平均功率为 1
-    const_power = np.mean(np.abs(const) ** 2)
-    const /= np.sqrt(const_power)
+    # UnitAveragePower normalize
+    const /= np.sqrt(np.mean(np.abs(const) ** 2))
     return const
 
 
-def bits_to_int(bits: np.ndarray) -> np.ndarray:
+def qammod_from_integers(data: np.ndarray, M: int) -> np.ndarray:
     """
-    将形状 [..., n_bits] 的比特向量转换为整数（MSB 优先）
+    MATLAB-like: qammod(data, M, 'UnitAveragePower', true)
+    data: integers in [0, M-1]
     """
-    n_bits = bits.shape[-1]
-    weights = 1 << np.arange(n_bits - 1, -1, -1)
-    return np.sum(bits * weights, axis=-1)
+    data = np.asarray(data).astype(int).ravel()
+    const = constellation_unit_power(M)
+    if np.any(data < 0) or np.any(data >= M):
+        raise ValueError(f"Data symbols must be in [0, {M-1}].")
+    return const[data]
 
 
-def int_to_bits(vals: np.ndarray, n_bits: int) -> np.ndarray:
+# -----------------------------
+# EVM (match your MATLAB compute_evm behavior)
+# -----------------------------
+def compute_evm_percent(original: np.ndarray, compressed: np.ndarray, modOrder: int, methodName: str) -> float:
     """
-    将整数数组 vals 转为比特数组，形状 [len(vals), n_bits]，MSB 优先
+    Matches the MATLAB logic you posted:
+    - If methodName == "Modulation": EVM=0 (lossless)
+    - Else: EVM = 100 * sqrt(errorPower/signalPower) * scalingFactor
+      scalingFactor: 2->1, 4->1, 16->1.5, 64->2.0 (consistent with your MATLAB intent)
     """
-    bits = (((vals[:, None] & (1 << np.arange(n_bits - 1, -1, -1))) > 0)
-            .astype(np.int8))
-    return bits
+    original = np.asarray(original).reshape(-1)
+    compressed = np.asarray(compressed).reshape(-1)
+
+    if methodName == "Modulation":
+        return 0.0
+
+    signalPower = np.mean(np.abs(original) ** 2) + np.finfo(float).eps
+    errorPower = np.mean(np.abs(original - compressed) ** 2)
+
+    if modOrder in (2, 4):      # BPSK/QPSK
+        scalingFactor = 1.0
+    elif modOrder == 16:
+        scalingFactor = 1.5
+    elif modOrder == 64:
+        scalingFactor = 2.0
+    else:
+        scalingFactor = 1.0
+
+    evm = max(0.0, 100.0 * np.sqrt(errorPower / signalPower) * scalingFactor)
+    return float(evm)
 
 
-def qam_mod(bits: np.ndarray, M: int) -> np.ndarray:
+# -----------------------------
+# Compression: BFP (faithful to your MATLAB structure)
+# -----------------------------
+def _process_component_bfp(data: np.ndarray, blockSize: int, exponentBitWidth: int, mantissaBitWidth: int):
+    data = np.asarray(data).reshape(-1)
+    numBlocks = int(np.ceil(len(data) / blockSize))
+    compressed = np.zeros_like(data, dtype=np.complex128)
+
+    metadataBits = numBlocks * exponentBitWidth
+    maxLevel = 2 ** (mantissaBitWidth - 1) - 1
+    threshold = 2 ** (-mantissaBitWidth)
+
+    for blk in range(numBlocks):
+        s = blk * blockSize
+        e = min((blk + 1) * blockSize, len(data))
+        block = data[s:e]
+
+        blockMax = np.max(np.abs(block))
+        if blockMax < np.finfo(float).eps:
+            compressed[s:e] = 0
+            continue
+
+        blockExponent = np.ceil(np.log2(blockMax + np.finfo(float).eps))
+        blockExponent = np.clip(
+            blockExponent,
+            -2 ** (exponentBitWidth - 1),
+            2 ** (exponentBitWidth - 1) - 1
+        )
+
+        scaleFactor = 2 ** (-blockExponent)
+
+        quantizedBlock = np.round((block * scaleFactor) * maxLevel) / maxLevel
+        quantizedBlock[np.abs(quantizedBlock) < threshold] = 0
+
+        compressed[s:e] = quantizedBlock / scaleFactor
+
+    return compressed, int(metadataBits)
+
+
+def bfp_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: int = 12):
     """
-    QAM 调制
-    bits: shape [N_bits,]
-    返回: shape [N_sym,] 的复数符号
+    BFP compression with exponent+mantissa split (same as MATLAB: exponent=ceil(0.3*bitWidth)).
+    Note: blockSize is fixed to 12 (PRB-level) for ALL modulations for fairness and O-RAN consistency.
     """
-    bits = np.asarray(bits).astype(np.int8)
-    bits_per_sym = int(np.log2(M))
-    if bits.size % bits_per_sym != 0:
-        raise ValueError("Number of bits must be multiple of log2(M).")
+    exponentBitWidth = int(np.ceil(0.3 * bitWidth))
+    mantissaBitWidth = bitWidth - exponentBitWidth
 
-    const = qam_constellation(M)
-    bit_groups = bits.reshape(-1, bits_per_sym)
-    idx = bits_to_int(bit_groups)
-    syms = const[idx]
-    return syms
+    compressed, metadataBits = _process_component_bfp(data, blockSize, exponentBitWidth, mantissaBitWidth)
+
+    originalBitWidth = 32
+    originalSize = data.size * originalBitWidth
+    compressedSize = compressed.size * bitWidth + metadataBits
+    CR = originalSize / compressedSize
+    return compressed, float(CR)
 
 
-def qam_demod(syms: np.ndarray, M: int) -> np.ndarray:
+# -----------------------------
+# Compression: Block Scaling (faithful to your MATLAB structure)
+# -----------------------------
+def _process_block_scaling(data: np.ndarray, blockSize: int, exponentBitWidth: int, mantissaBitWidth: int):
+    data = np.asarray(data).reshape(-1)
+    numBlocks = int(np.ceil(len(data) / blockSize))
+    out = np.zeros_like(data, dtype=float)
+    metadataBits = numBlocks * exponentBitWidth
+
+    maxLevel = 2 ** (mantissaBitWidth - 1) - 1
+    threshold = 2 ** (-mantissaBitWidth)
+
+    for blk in range(numBlocks):
+        s = blk * blockSize
+        e = min((blk + 1) * blockSize, len(data))
+        block = data[s:e]
+
+        blockMax = np.max(np.abs(block))
+        if blockMax < np.finfo(float).eps:
+            out[s:e] = 0
+            continue
+
+        blockExponent = np.ceil(np.log2(blockMax + np.finfo(float).eps))
+        blockExponent = np.clip(
+            blockExponent,
+            -2 ** (exponentBitWidth - 1),
+            2 ** (exponentBitWidth - 1) - 1
+        )
+
+        scaleFactor = 2 ** (-blockExponent)
+
+        quantizedBlock = np.round((block * scaleFactor) * maxLevel) / maxLevel
+        quantizedBlock[np.abs(quantizedBlock) < threshold] = 0
+
+        out[s:e] = quantizedBlock / scaleFactor
+
+    return out, int(metadataBits)
+
+
+def bsc_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: int = 12):
     """
-    QAM 解调（最小距离硬判决）
-    syms: shape [N_sym,]
-    返回: shape [N_bits,] 的比特
+    Block Scaling compression. In your MATLAB you used exponentBitWidth depending on modulation.
+    We'll keep that same rule, but fix blockSize = 12 for all modulations.
     """
-    syms = np.asarray(syms)
-    const = qam_constellation(M)
-    bits_per_sym = int(np.log2(M))
+    if modOrder in (2, 4):  # BPSK/QPSK
+        exponentBitWidth = int(np.ceil(0.2 * bitWidth))
+    elif modOrder == 16:
+        exponentBitWidth = int(np.ceil(0.3 * bitWidth))
+    elif modOrder == 64:
+        exponentBitWidth = int(np.ceil(0.4 * bitWidth))
+    else:
+        raise ValueError("Unsupported modulation order for this demo.")
 
-    # 逐符号找最近星座点
-    # 可以向量化：dist_matrix [N_sym, M]
-    dist2 = np.abs(syms[:, None] - const[None, :]) ** 2
-    idx_hat = np.argmin(dist2, axis=1)
-    bits_block = int_to_bits(idx_hat, bits_per_sym)
-    return bits_block.reshape(-1)
+    mantissaBitWidth = bitWidth - exponentBitWidth
 
+    isComplexData = np.iscomplexobj(data)
+    if isComplexData:
+        real_part = np.real(data)
+        imag_part = np.imag(data)
+        cr, meta_r = _process_block_scaling(real_part, blockSize, exponentBitWidth, mantissaBitWidth)
+        ci, meta_i = _process_block_scaling(imag_part, blockSize, exponentBitWidth, mantissaBitWidth)
+        compressed = cr + 1j * ci
+        metadataBits = meta_r + meta_i
+    else:
+        compressed, metadataBits = _process_block_scaling(data, blockSize, exponentBitWidth, mantissaBitWidth)
 
-# =============== 压缩算法实现（逐 block） =============== #
-
-def compress_bs_block(y: np.ndarray, qbits: int) -> np.ndarray:
-    """
-    Block Scaling 压缩，实部和虚部共享一个 scale
-    y: 复数向量 [N,]
-    qbits: 量化比特数（对实部、虚部分别量化）
-    """
-    y = np.asarray(y)
-    y_hat = np.zeros_like(y, dtype=np.complex128)
-    if y.size == 0:
-        return y_hat
-
-    re = np.real(y)
-    im = np.imag(y)
-    max_val = np.max(np.abs(np.concatenate([re, im])))
-    if max_val == 0:
-        return y_hat
-
-    max_int = (1 << (qbits - 1)) - 1  # 2^(qbits-1)-1
-    S = max_val / max_int  # y/S ≈ 整数范围
-
-    # 实部
-    re_n = re / S
-    re_q = np.round(re_n)
-    re_q = np.clip(re_q, -max_int - 1, max_int)
-    re_hat = re_q * S
-
-    # 虚部
-    im_n = im / S
-    im_q = np.round(im_n)
-    im_q = np.clip(im_q, -max_int - 1, max_int)
-    im_hat = im_q * S
-
-    y_hat = re_hat + 1j * im_hat
-    return y_hat
+    # Keep MATLAB-like CR formula (including sparsity counting)
+    originalBitWidth = 32
+    originalSize = data.size * originalBitWidth * (1 + int(isComplexData))
+    nonzeros = np.count_nonzero(compressed)
+    compressedSize = (nonzeros * bitWidth + metadataBits) * (1 + int(isComplexData))
+    CR = originalSize / compressedSize if compressedSize > 0 else 1.0
+    return compressed.astype(np.complex128), float(CR)
 
 
-def compress_bfp_block(y: np.ndarray, qbits: int) -> np.ndarray:
-    """
-    Block Floating Point 压缩
-    使用 block-level exponent e，mantissa 在 [-1, 1] 上量化
-    """
-    y = np.asarray(y)
-    y_hat = np.zeros_like(y, dtype=np.complex128)
-    if y.size == 0:
-        return y_hat
+# -----------------------------
+# Compression: μ-law (faithful to your MATLAB function)
+# -----------------------------
+def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
+    mu = 200
+    eps = np.finfo(float).eps
 
-    re = np.real(y)
-    im = np.imag(y)
-    max_val = np.max(np.abs(np.concatenate([re, im])))
-    if max_val == 0:
-        return y_hat
+    data = np.asarray(data).reshape(-1).astype(np.complex128)
+    maxVal = np.max(np.abs(data))
+    if maxVal == 0:
+        return np.zeros_like(data), 1.0
 
-    # exponent e
-    e = np.floor(np.log2(max_val))
-    scale = 2.0 ** e
+    normalizedData = data / maxVal
 
-    # mantissa in [-1,1]
-    re_m = re / scale
-    im_m = im / scale
+    # MATLAB-like complex sign: sign(z)=z/abs(z), sign(0)=0
+    abs_z = np.abs(normalizedData)
+    sign_z = np.zeros_like(normalizedData)
+    nz = abs_z > 0
+    sign_z[nz] = normalizedData[nz] / abs_z[nz]
 
-    max_int = (1 << (qbits - 1)) - 1
+    # μ-law companding on magnitude, keep phase
+    compressedData = sign_z * (np.log(1 + mu * abs_z) / np.log(1 + mu))
 
-    # 实部 mantissa 量化
-    re_q = np.round(re_m * max_int)
-    re_q = np.clip(re_q, -max_int - 1, max_int)
-    re_hat = (re_q / max_int) * scale
+    quantizationLevels = 2 ** (bitWidth - 2)
+    stepSize = 1.0 / (quantizationLevels - 2)
 
-    # 虚部 mantissa 量化
-    im_q = np.round(im_m * max_int)
-    im_q = np.clip(im_q, -max_int - 1, max_int)
-    im_hat = (im_q / max_int) * scale
+    noiseMultiplier_map = {8: 0.25, 9: 0.20, 10: 0.18, 12: 0.15, 14: 0.10}
+    noiseMultiplier = noiseMultiplier_map.get(bitWidth, 0.25)
 
-    y_hat = re_hat + 1j * im_hat
-    return y_hat
+    # MATLAB randn -> real Gaussian noise
+    noise = stepSize * noiseMultiplier * rng.standard_normal(size=compressedData.shape)
 
+    qscale = (quantizationLevels - 2)
+    quantizedData = np.round((compressedData + noise) * qscale) / qscale
 
-def compress_mulaw_block(y: np.ndarray, qbits: int, mu: float = 8.0) -> np.ndarray:
-    """
-    μ-law 压缩（按块归一化到 [-1,1]，再 compand & expand）
-    """
-    y = np.asarray(y)
-    y_hat = np.zeros_like(y, dtype=np.complex128)
-    if y.size == 0:
-        return y_hat
+    # expand
+    decompressionScaling = 1 + 0.03 * noiseMultiplier
+    abs_q = np.abs(quantizedData)
 
-    re = np.real(y)
-    im = np.imag(y)
-    max_val = np.max(np.abs(np.concatenate([re, im])))
-    if max_val == 0:
-        return y_hat
+    # sign for quantized complex
+    abs_q0 = abs_q > 0
+    sign_q = np.zeros_like(quantizedData)
+    sign_q[abs_q0] = quantizedData[abs_q0] / abs_q[abs_q0]
 
-    # 归一化到 [-1,1]
-    re_n = re / max_val
-    im_n = im / max_val
+    decompressedData = sign_q * (1 / mu) * ((1 + mu) ** abs_q - 1)
+    decompressedData = decompressedData * decompressionScaling
 
-    # μ-law companding
-    re_s = np.sign(re_n)
-    im_s = np.sign(im_n)
-    re_a = np.abs(re_n)
-    im_a = np.abs(im_n)
+    compressed = decompressedData * maxVal
 
-    re_c = re_s * (np.log(1 + mu * re_a) / np.log(1 + mu))
-    im_c = im_s * (np.log(1 + mu * im_a) / np.log(1 + mu))
+    originalBitWidth = 32
+    compressedSize = quantizedData.size * bitWidth
+    originalSize = data.size * originalBitWidth
+    CR = originalSize / compressedSize
 
-    # 量化 companded 值
-    max_int = (1 << (qbits - 1)) - 1
-    re_q = np.round(re_c * max_int)
-    re_q = np.clip(re_q, -max_int - 1, max_int)
-    im_q = np.round(im_c * max_int)
-    im_q = np.clip(im_q, -max_int - 1, max_int)
-
-    re_c_hat = re_q / max_int
-    im_c_hat = im_q / max_int
-
-    # μ-law expand
-    re_a_hat = ((1 + mu) ** np.abs(re_c_hat) - 1) / mu
-    im_a_hat = ((1 + mu) ** np.abs(im_c_hat) - 1) / mu
-
-    re_hat = np.sign(re_c_hat) * re_a_hat * max_val
-    im_hat = np.sign(im_c_hat) * im_a_hat * max_val
-
-    y_hat = re_hat + 1j * im_hat
-    return y_hat
+    return compressed.astype(np.complex128), float(CR)
 
 
-def compress_uniform_block(y: np.ndarray, qbits: int, fullscale: float = 4.0) -> np.ndarray:
-    """
-    Uniform 量化，使用固定 fullscale 范围 [-fullscale, fullscale]
-    """
-    y = np.asarray(y)
-    y_hat = np.zeros_like(y, dtype=np.complex128)
-    if y.size == 0:
-        return y_hat
 
-    re = np.real(y)
-    im = np.imag(y)
+# -----------------------------
+# Compression: Modulation (lossless, CR formula like MATLAB)
+# -----------------------------
+def modulation_compression(data: np.ndarray, bitWidth: int, modOrder: int):
+    data = np.asarray(data).reshape(-1).astype(np.complex128)
+    maxValue = np.max(np.abs(data))
+    if maxValue == 0:
+        return {"compressed": np.zeros_like(data), "CR": 1.0, "EVM": 0.0}
 
-    max_int = (1 << (qbits - 1)) - 1
+    normalizedData = data / maxValue
+    compressed = normalizedData * maxValue  # lossless
 
-    # 实部
-    re_n = re / fullscale
-    re_q = np.round(re_n * max_int)
-    re_q = np.clip(re_q, -max_int - 1, max_int)
-    re_hat = (re_q / max_int) * fullscale
+    originalBitWidth = 32
+    numSymbols = data.size
+    originalSize = numSymbols * originalBitWidth
+    compressedSize = numSymbols * (bitWidth + np.log2(modOrder))
+    CR = originalSize / compressedSize
 
-    # 虚部
-    im_n = im / fullscale
-    im_q = np.round(im_n * max_int)
-    im_q = np.clip(im_q, -max_int - 1, max_int)
-    im_hat = (im_q / max_int) * fullscale
-
-    y_hat = re_hat + 1j * im_hat
-    return y_hat
+    return {"compressed": compressed, "CR": float(CR), "EVM": 0.0}
 
 
-# ===================== 主仿真函数 ===================== #
+# -----------------------------
+# Plot: CR vs Bitwidth (subplots, like MATLAB helper)
+# -----------------------------
+def plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels):
+    numTechniques = len(results)
+    numRows = int(np.ceil(np.sqrt(numTechniques)))
+    numCols = int(np.ceil(numTechniques / numRows))
+
+    plt.figure()
+    for i in range(numTechniques):
+        ax = plt.subplot(numRows, numCols, i + 1)
+        ax.grid(True)
+        ax.set_xlabel("Bitwidth (bits)")
+        ax.set_ylabel("Compression Ratio (CR)")
+        ax.set_title(f"CR vs Bitwidth - {results[i]['methodName']}")
+
+        colors = plt.cm.tab10(np.linspace(0, 1, len(modulationOrders)))
+        markers = ['o', 's', 'd', '^']  # extended for 4 modulations
+
+        for j, modOrder in enumerate(modulationOrders):
+            valid = (np.array(results[i]["modulationOrder"]) == modOrder)
+            bitWidths = np.array(results[i]["bitWidth"])[valid]
+            CRs = np.array(results[i]["CR"])[valid]
+
+            sortIdx = np.argsort(bitWidths)
+            ax.plot(bitWidths[sortIdx], CRs[sortIdx],
+                    marker=markers[j % len(markers)],
+                    linewidth=1.5,
+                    color=colors[j],
+                    label=mod_labels[modOrder])
+
+        ax.legend(loc="best")
+
+    plt.suptitle("CR vs Bitwidth for All Compression Techniques")
+    plt.tight_layout(rect=[0, 0.02, 1, 0.95])
+
+
+# -----------------------------
+# Main: MATLAB-like analysis loop (no DL)
+# -----------------------------
+def run_compression_analysis():
+    numSamples = int(1e5)
+    originalBitWidth = 32
+
+    # ✅ Corrected modulation orders
+    modulationOrders = [2, 4, 16, 64]  # BPSK, QPSK, 16-QAM, 64-QAM
+    mod_labels = {2: "BPSK", 4: "QPSK", 16: "16-QAM", 64: "64-QAM"}
+
+    bitWidths = [8, 9, 10, 12, 14]
+
+    # ===== Block-size selection (O-RAN/NR-consistent) =====
+    # In O-RAN fronthaul compression, quantization parameters (scale/exponent/shift)
+    # are commonly shared over a PRB-level granularity. Since a PRB spans 12 subcarriers
+    # per OFDM symbol, we set blockSize = 12 for all modulation orders. This avoids
+    # coupling block granularity with the modulation format and enables fair CR–EVM
+    # comparisons across compression schemes.
+    blockSize = 12
+
+    compressionMethods = [
+        bfp_compression,
+        bsc_compression,
+        mu_law_compression,
+        modulation_compression
+    ]
+    methodNames = ["BFP", "BlockScaling", "MuLaw", "Modulation"]
+
+    results = []
+    for name in methodNames:
+        results.append({
+            "methodName": name,
+            "bitWidth": [],
+            "CR": [],
+            "EVM": [],
+            "originalSize": [],
+            "compressedSize": [],
+            "modulationOrder": []
+        })
+
+    print("Starting Compression Analysis...")
+
+    for mIdx, methodName in enumerate(methodNames):
+        print(f"\nAnalyzing Method: {methodName}")
+
+        for modOrder in modulationOrders:
+            dataBits = rng.integers(0, modOrder, size=numSamples, dtype=np.int32)
+            IQ_samples = qammod_from_integers(dataBits, modOrder)
+
+            for bitWidth in bitWidths:
+                print(f"  Processing {mod_labels[modOrder]}, Bitwidth: {bitWidth}")
+
+                if methodName == "Modulation":
+                    compRes = modulation_compression(IQ_samples, bitWidth, modOrder)
+                    compressed = compRes["compressed"]
+                    CR = compRes["CR"]
+                    EVM = compRes["EVM"]
+                elif methodName == "BFP":
+                    compressed, CR = bfp_compression(IQ_samples, bitWidth, modOrder, blockSize=blockSize)
+                    EVM = compute_evm_percent(IQ_samples, compressed, modOrder, methodName)
+                elif methodName == "BlockScaling":
+                    compressed, CR = bsc_compression(IQ_samples, bitWidth, modOrder, blockSize=blockSize)
+                    EVM = compute_evm_percent(IQ_samples, compressed, modOrder, methodName)
+                elif methodName == "MuLaw":
+                    compressed, CR = mu_law_compression(IQ_samples, bitWidth, modOrder)
+                    EVM = compute_evm_percent(IQ_samples, compressed, modOrder, methodName)
+                else:
+                    raise ValueError("Unknown method")
+
+                originalSize = IQ_samples.size * originalBitWidth
+                compressedSize = IQ_samples.size * bitWidth
+
+                results[mIdx]["bitWidth"].append(bitWidth)
+                results[mIdx]["CR"].append(CR)
+                results[mIdx]["EVM"].append(EVM)
+                results[mIdx]["originalSize"].append(originalSize / 1e3)
+                results[mIdx]["compressedSize"].append(compressedSize / 1e3)
+                results[mIdx]["modulationOrder"].append(modOrder)
+
+                print(f"    CR: {CR:.2f}, EVM: {EVM:.2f}%, "
+                      f"Original: {originalSize/1e3:.2f} kb, Compressed: {compressedSize/1e3:.2f} kb")
+
+    print("\nCompression Analysis Completed.\n")
+    return results, modulationOrders, mod_labels
+
+
+def plot_all_figures(results, modulationOrders, mod_labels):
+    # =========================
+    # 1) CR vs EVM for each method separately (subplots)
+    # =========================
+    numTechniques = len(results)
+    numRows = int(np.ceil(np.sqrt(numTechniques)))
+    numCols = int(np.ceil(numTechniques / numRows))
+
+    plt.figure()
+    for i in range(numTechniques):
+        ax = plt.subplot(numRows, numCols, i + 1)
+        ax.grid(True)
+        ax.set_xlabel("Compression Ratio (CR)")
+        ax.set_ylabel("EVM (%)")
+        ax.set_title(f"CR vs EVM - {results[i]['methodName']}")
+
+        colors = plt.cm.tab10(np.linspace(0, 1, len(modulationOrders)))
+        markers = ['o', 's', 'd', '^']
+
+        for j, modOrder in enumerate(modulationOrders):
+            valid = (np.array(results[i]["modulationOrder"]) == modOrder)
+            CR_values = np.array(results[i]["CR"])[valid]
+            EVM_values = np.array(results[i]["EVM"])[valid]
+
+            sortIdx = np.argsort(CR_values)
+            ax.plot(CR_values[sortIdx], EVM_values[sortIdx],
+                    marker=markers[j % len(markers)],
+                    linewidth=1.5,
+                    color=colors[j],
+                    label=mod_labels[modOrder])
+
+        ax.legend(loc="best")
+
+    plt.suptitle("CR vs EVM for All Compression Techniques")
+    plt.tight_layout(rect=[0, 0.02, 1, 0.95])
+
+    # =========================
+    # 2) Combined Plot: CR vs EVM for all methods together
+    # =========================
+    plt.figure()
+    plt.grid(True)
+    plt.xlabel("Compression Ratio (CR)")
+    plt.ylabel("EVM (%)")
+    plt.title("CR vs EVM for All Compression Methods")
+
+    colors = plt.cm.tab10(np.linspace(0, 1, numTechniques))
+    markers = ['o', 's', 'd', '^', 'v', 'p', 'h', 'x']
+
+    for i in range(numTechniques):
+        methodName = results[i]["methodName"]
+        for modOrder in modulationOrders:
+            valid = (np.array(results[i]["modulationOrder"]) == modOrder)
+
+            if "MuLaw" in methodName:
+                lineStyle = '--'
+                markerStyle = 'd'
+            else:
+                lineStyle = '-'
+                markerStyle = markers[(modOrder % len(markers))]
+
+            plt.plot(np.array(results[i]["CR"])[valid],
+                     np.array(results[i]["EVM"])[valid],
+                     lineStyle,
+                     marker=markerStyle,
+                     linewidth=1.5,
+                     markersize=6,
+                     color=colors[i],
+                     label=f"{methodName} - {mod_labels[modOrder]}")
+
+    plt.legend(loc="best")
+
+    # =========================
+    # 3) Bar Chart: Average EVM per method
+    # =========================
+    plt.figure()
+    avgEVMs = [float(np.mean(r["EVM"])) for r in results]
+    x = np.arange(len(avgEVMs))
+
+    plt.bar(x, avgEVMs)
+    plt.xticks(x, [r["methodName"] for r in results])
+    plt.xlabel("Compression Methods")
+    plt.ylabel("Average EVM (%)")
+    plt.title("Average EVM Comparison")
+    plt.grid(True, axis='y')
+
+    for i, v in enumerate(avgEVMs):
+        plt.text(i, v + 0.1, f"{v:.2f}", ha="center", fontsize=10, fontweight="bold")
+
+    # =========================
+    # 4) CR vs Bitwidth for each method separately (subplots)
+    # =========================
+    plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels)
+
+    plt.show()
+
 
 def main():
-    # ---------- 场景参数 ---------- #
-    M_RU = 8      # RU 数量
-    K_UE = 2      # UE 数量
-    N_sym_per_TB = 144  # 每个 UE 每个 TB 的符号数（可看作 12 PRB*12 RE）
-
-    # 选择 MCS（决定 QAM 阶数 & 压缩比特）
-    # 1=QPSK, 2=16QAM, 3=64QAM, 4=256QAM
-    mcs = 4
-
-    if mcs == 1:
-        M_mod = 4
-        name_mod = "QPSK"
-        CW_bits = 2
-    elif mcs == 2:
-        M_mod = 16
-        name_mod = "16QAM"
-        CW_bits = 4
-    elif mcs == 3:
-        M_mod = 64
-        name_mod = "64QAM"
-        CW_bits = 5
-    elif mcs == 4:
-        M_mod = 256
-        name_mod = "256QAM"
-        CW_bits = 6
-    else:
-        raise ValueError("Unknown MCS value")
-
-    bits_per_sym = int(np.log2(M_mod))
-    bits_per_TB = N_sym_per_TB * bits_per_sym
-
-    # SNR 扫描范围（dB）
-    SNRdB_vec = np.arange(0, 29, 4)  # 0,4,...,28
-    N_SNR = len(SNRdB_vec)
-
-    # 每个 SNR 下的 Monte-Carlo 次数（可以调大）
-    Ntrials = 300
-
-    tx_symbol_power = 1.0  # 调制归一化后为 1
-
-    algo_names = [
-        "No compression",
-        "Block Scaling (BS)",
-        "Block Floating Point (BFP)",
-        "mu-law",
-        "Uniform"
-    ]
-    N_algo = len(algo_names)
-
-    BLER = np.zeros((N_algo, N_SNR), dtype=float)
-
-    print(f"Simulating {name_mod}, CW={CW_bits} bits, M={M_RU}, K={K_UE} ...")
-
-    # ---------- 遍历 SNR ---------- #
-    for iSNR, SNRdB in enumerate(SNRdB_vec):
-        SNRlin = 10 ** (SNRdB / 10.0)
-        noise_var = tx_symbol_power / SNRlin
-
-        blk_err_cnt = np.zeros(N_algo, dtype=int)
-
-        for _ in range(Ntrials):
-            # ------ 1. 生成发送比特 & 调制 ------ #
-            # bits_tx shape: [K_UE, bits_per_TB]
-            bits_tx = rng.integers(0, 2, size=(K_UE, bits_per_TB), dtype=np.int8)
-            # s_tx shape: [N_sym, K_UE]
-            s_tx = np.zeros((N_sym_per_TB, K_UE), dtype=complex)
-            for k in range(K_UE):
-                syms_k = qam_mod(bits_tx[k], M_mod)
-                s_tx[:, k] = syms_k
-
-            # ------ 2. 信道 & 噪声 ------ #
-            # H shape: [N_sym, M_RU, K_UE]
-            H = (rng.normal(size=(N_sym_per_TB, M_RU, K_UE)) +
-                 1j * rng.normal(size=(N_sym_per_TB, M_RU, K_UE))) / np.sqrt(2)
-
-            # 接收信号 Y, shape: [N_sym, M_RU]
-            Y = np.zeros((N_sym_per_TB, M_RU), dtype=complex)
-            for n in range(N_sym_per_TB):
-                g_n = H[n]          # [M_RU, K_UE]
-                s_n = s_tx[n]       # [K_UE,]
-                y_n = g_n @ s_n
-                noise = (rng.normal(size=M_RU) + 1j * rng.normal(size=M_RU)) \
-                    * np.sqrt(noise_var / 2)
-                Y[n] = y_n + noise
-
-            # 转置方便逐 RU 压缩: [M_RU, N_sym]
-            Y_T = Y.T
-
-            # ------ 3. 各种压缩算法 ------ #
-            Yhat_list = [None] * N_algo
-
-            # (1) 无压缩
-            Yhat_list[0] = Y_T.copy()
-
-            # (2) BS
-            Yhat_bs = np.zeros_like(Y_T)
-            for m in range(M_RU):
-                Yhat_bs[m] = compress_bs_block(Y_T[m], CW_bits)
-            Yhat_list[1] = Yhat_bs
-
-            # (3) BFP
-            Yhat_bfp = np.zeros_like(Y_T)
-            for m in range(M_RU):
-                Yhat_bfp[m] = compress_bfp_block(Y_T[m], CW_bits)
-            Yhat_list[2] = Yhat_bfp
-
-            # (4) mu-law
-            Yhat_mu = np.zeros_like(Y_T)
-            for m in range(M_RU):
-                Yhat_mu[m] = compress_mulaw_block(Y_T[m], CW_bits, mu=8.0)
-            Yhat_list[3] = Yhat_mu
-
-            # (5) Uniform
-            Yhat_uni = np.zeros_like(Y_T)
-            for m in range(M_RU):
-                Yhat_uni[m] = compress_uniform_block(Y_T[m], CW_bits, fullscale=4.0)
-            Yhat_list[4] = Yhat_uni
-
-            # ------ 4. DU 侧检测 & BLER 统计 ------ #
-            for ia in range(N_algo):
-                Y_use_T = Yhat_list[ia]      # [M_RU, N_sym]
-                bits_hat = np.zeros((K_UE, bits_per_TB), dtype=np.int8)
-
-                for n in range(N_sym_per_TB):
-                    g_n = H[n]              # [M_RU, K_UE]
-                    y_n = Y_use_T[:, n]     # [M_RU,]
-
-                    # MMSE 合并: R = G G^H + sigma^2 I, W = R^{-1} G
-                    R = g_n @ g_n.conj().T + noise_var * np.eye(M_RU)
-                    W = np.linalg.solve(R, g_n)    # [M_RU, K_UE]
-                    x_hat = W.conj().T @ y_n      # [K_UE,]
-
-                    # QAM 解调
-                    for k in range(K_UE):
-                        sym_hat = x_hat[k]
-                        bits_demod_k = qam_demod(np.array([sym_hat]), M_mod)
-                        # 写入 TB 比特流
-                        start = n * bits_per_sym
-                        end = start + bits_per_sym
-                        bits_hat[k, start:end] = bits_demod_k
-
-                # 统计 block error（一个 UE 的 TB 只要有一位错就算 1 个 block error）
-                for k in range(K_UE):
-                    n_err = np.sum(bits_hat[k] != bits_tx[k])
-                    if n_err > 0:
-                        blk_err_cnt[ia] += 1
-
-        total_TB = Ntrials * K_UE
-        BLER[:, iSNR] = blk_err_cnt / total_TB
-
-        print(f"SNR = {SNRdB:2d} dB | "
-              f"{algo_names[0]}={BLER[0, iSNR]:.3f}, "
-              f"BS={BLER[1, iSNR]:.3f}, "
-              f"BFP={BLER[2, iSNR]:.3f}, "
-              f"muL={BLER[3, iSNR]:.3f}, "
-              f"Uni={BLER[4, iSNR]:.3f}")
-
-    # ---------- 作图 ---------- #
-    plt.figure()
-    markers = ['o', 's', 'd', '^', 'v']
-    for i in range(N_algo):
-        plt.semilogy(SNRdB_vec, BLER[i], '-' + markers[i],
-                     linewidth=1.5, label=algo_names[i])
-    plt.grid(True, which='both')
-    plt.xlabel("SNR (dB)")
-    plt.ylabel("BLER")
-    plt.ylim(1e-3, 1)
-    plt.xlim(SNRdB_vec[0], SNRdB_vec[-1])
-    plt.title(f"DD-MIMO, {name_mod}, CW={CW_bits} bits, M={M_RU}, K={K_UE}")
-    plt.legend(loc='lower left')
-    plt.tight_layout()
-    plt.show()
+    results, modulationOrders, mod_labels = run_compression_analysis()
+    plot_all_figures(results, modulationOrders, mod_labels)
 
 
 if __name__ == "__main__":
