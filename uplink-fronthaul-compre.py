@@ -4,34 +4,28 @@
 """
 Compression Analysis for 5G/O-RAN Fronthaul (Python version, no Deep Learning)
 
-This script is a faithful Python counterpart of the MATLAB-style workflow you shared,
-but with the critical modulation-label fix applied:
-
+Fixes applied:
 - BPSK  -> modOrder = 2
 - QPSK  -> modOrder = 4
 - 16-QAM-> modOrder = 16
 - 64-QAM-> modOrder = 64
 
-It generates the SAME types of figures as your MATLAB code (excluding deep learning):
+Figures:
 1) Subplots (one per method): CR vs EVM
-2) Combined plot: CR vs EVM for all methods
+2) Combined plot: CR vs EVM for all methods  (THIS ONE uses a manual legend:
+   - Legend #1: Modulation labels (BPSK/QPSK/16-QAM/64-QAM) via markers
+   - Legend #2: Compression method labels (BFP/BlockScaling/MuLaw/Modulation) via colors/linestyles
 3) Bar chart: Average EVM per method
 4) Subplots (one per method): CR vs Bitwidth
 
-Block-size selection note (important for fairness and O-RAN consistency):
-- In O-RAN/NR fronthaul compression, quantization parameters (scale/exponent/shift)
-  are commonly shared over a PRB-level granularity. A PRB spans 12 subcarriers per
-  OFDM symbol. Therefore we set blockSize = 12 for ALL modulation orders.
-- This decouples block granularity from modulation format and ensures fair CR–EVM
-  comparisons across compression schemes.
-
-Dependencies: numpy, matplotlib
-Run: python compression_analysis.py
+Block-size selection note:
+- In O-RAN/NR fronthaul compression, quantization parameters are often shared over a PRB-level granularity.
+  A PRB spans 12 subcarriers per OFDM symbol, thus we set blockSize = 12 for ALL modulation orders.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+from matplotlib.lines import Line2D
 
 # -----------------------------
 # Reproducibility
@@ -43,14 +37,8 @@ rng = np.random.default_rng(42)
 # QAM/BPSK Modulation (UnitAveragePower style)
 # -----------------------------
 def constellation_unit_power(M: int) -> np.ndarray:
-    """
-    Returns constellation points with unit average power.
-    Supports:
-      - M=2 (BPSK)
-      - Square QAM: 4,16,64,256,...
-    """
+    """Returns constellation points with unit average power."""
     if M == 2:
-        # BPSK: {+1, -1}, already unit power
         return np.array([1 + 0j, -1 + 0j], dtype=np.complex128)
 
     m_side = int(np.sqrt(M))
@@ -60,17 +48,12 @@ def constellation_unit_power(M: int) -> np.ndarray:
     levels = np.arange(-(m_side - 1), m_side, 2)
     xv, yv = np.meshgrid(levels, levels)
     const = (xv + 1j * yv).flatten().astype(np.complex128)
-
-    # UnitAveragePower normalize
-    const /= np.sqrt(np.mean(np.abs(const) ** 2))
+    const /= np.sqrt(np.mean(np.abs(const) ** 2))  # UnitAveragePower normalize
     return const
 
 
 def qammod_from_integers(data: np.ndarray, M: int) -> np.ndarray:
-    """
-    MATLAB-like: qammod(data, M, 'UnitAveragePower', true)
-    data: integers in [0, M-1]
-    """
+    """MATLAB-like qammod(data, M, 'UnitAveragePower', true) where data are integers [0..M-1]."""
     data = np.asarray(data).astype(int).ravel()
     const = constellation_unit_power(M)
     if np.any(data < 0) or np.any(data >= M):
@@ -79,25 +62,19 @@ def qammod_from_integers(data: np.ndarray, M: int) -> np.ndarray:
 
 
 # -----------------------------
-# EVM (match your MATLAB compute_evm behavior)
+# EVM (match MATLAB compute_evm behavior)
 # -----------------------------
 def compute_evm_percent(original: np.ndarray, compressed: np.ndarray, modOrder: int, methodName: str) -> float:
-    """
-    Matches the MATLAB logic you posted:
-    - If methodName == "Modulation": EVM=0 (lossless)
-    - Else: EVM = 100 * sqrt(errorPower/signalPower) * scalingFactor
-      scalingFactor: 2->1, 4->1, 16->1.5, 64->2.0 (consistent with your MATLAB intent)
-    """
-    original = np.asarray(original).reshape(-1)
-    compressed = np.asarray(compressed).reshape(-1)
-
     if methodName == "Modulation":
         return 0.0
+
+    original = np.asarray(original).reshape(-1)
+    compressed = np.asarray(compressed).reshape(-1)
 
     signalPower = np.mean(np.abs(original) ** 2) + np.finfo(float).eps
     errorPower = np.mean(np.abs(original - compressed) ** 2)
 
-    if modOrder in (2, 4):      # BPSK/QPSK
+    if modOrder in (2, 4):
         scalingFactor = 1.0
     elif modOrder == 16:
         scalingFactor = 1.5
@@ -111,7 +88,7 @@ def compute_evm_percent(original: np.ndarray, compressed: np.ndarray, modOrder: 
 
 
 # -----------------------------
-# Compression: BFP (faithful to your MATLAB structure)
+# Compression: BFP
 # -----------------------------
 def _process_component_bfp(data: np.ndarray, blockSize: int, exponentBitWidth: int, mantissaBitWidth: int):
     data = np.asarray(data).reshape(-1)
@@ -133,11 +110,9 @@ def _process_component_bfp(data: np.ndarray, blockSize: int, exponentBitWidth: i
             continue
 
         blockExponent = np.ceil(np.log2(blockMax + np.finfo(float).eps))
-        blockExponent = np.clip(
-            blockExponent,
-            -2 ** (exponentBitWidth - 1),
-            2 ** (exponentBitWidth - 1) - 1
-        )
+        blockExponent = np.clip(blockExponent,
+                                -2 ** (exponentBitWidth - 1),
+                                2 ** (exponentBitWidth - 1) - 1)
 
         scaleFactor = 2 ** (-blockExponent)
 
@@ -150,10 +125,6 @@ def _process_component_bfp(data: np.ndarray, blockSize: int, exponentBitWidth: i
 
 
 def bfp_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: int = 12):
-    """
-    BFP compression with exponent+mantissa split (same as MATLAB: exponent=ceil(0.3*bitWidth)).
-    Note: blockSize is fixed to 12 (PRB-level) for ALL modulations for fairness and O-RAN consistency.
-    """
     exponentBitWidth = int(np.ceil(0.3 * bitWidth))
     mantissaBitWidth = bitWidth - exponentBitWidth
 
@@ -167,7 +138,7 @@ def bfp_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: i
 
 
 # -----------------------------
-# Compression: Block Scaling (faithful to your MATLAB structure)
+# Compression: Block Scaling
 # -----------------------------
 def _process_block_scaling(data: np.ndarray, blockSize: int, exponentBitWidth: int, mantissaBitWidth: int):
     data = np.asarray(data).reshape(-1)
@@ -189,11 +160,9 @@ def _process_block_scaling(data: np.ndarray, blockSize: int, exponentBitWidth: i
             continue
 
         blockExponent = np.ceil(np.log2(blockMax + np.finfo(float).eps))
-        blockExponent = np.clip(
-            blockExponent,
-            -2 ** (exponentBitWidth - 1),
-            2 ** (exponentBitWidth - 1) - 1
-        )
+        blockExponent = np.clip(blockExponent,
+                                -2 ** (exponentBitWidth - 1),
+                                2 ** (exponentBitWidth - 1) - 1)
 
         scaleFactor = 2 ** (-blockExponent)
 
@@ -206,11 +175,7 @@ def _process_block_scaling(data: np.ndarray, blockSize: int, exponentBitWidth: i
 
 
 def bsc_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: int = 12):
-    """
-    Block Scaling compression. In your MATLAB you used exponentBitWidth depending on modulation.
-    We'll keep that same rule, but fix blockSize = 12 for all modulations.
-    """
-    if modOrder in (2, 4):  # BPSK/QPSK
+    if modOrder in (2, 4):
         exponentBitWidth = int(np.ceil(0.2 * bitWidth))
     elif modOrder == 16:
         exponentBitWidth = int(np.ceil(0.3 * bitWidth))
@@ -232,7 +197,6 @@ def bsc_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: i
     else:
         compressed, metadataBits = _process_block_scaling(data, blockSize, exponentBitWidth, mantissaBitWidth)
 
-    # Keep MATLAB-like CR formula (including sparsity counting)
     originalBitWidth = 32
     originalSize = data.size * originalBitWidth * (1 + int(isComplexData))
     nonzeros = np.count_nonzero(compressed)
@@ -242,26 +206,23 @@ def bsc_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: i
 
 
 # -----------------------------
-# Compression: μ-law (faithful to your MATLAB function)
+# Compression: μ-law (MATLAB-like complex sign behavior)
 # -----------------------------
 def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
     mu = 200
-    eps = np.finfo(float).eps
-
     data = np.asarray(data).reshape(-1).astype(np.complex128)
+
     maxVal = np.max(np.abs(data))
     if maxVal == 0:
         return np.zeros_like(data), 1.0
 
     normalizedData = data / maxVal
 
-    # MATLAB-like complex sign: sign(z)=z/abs(z), sign(0)=0
     abs_z = np.abs(normalizedData)
     sign_z = np.zeros_like(normalizedData)
     nz = abs_z > 0
     sign_z[nz] = normalizedData[nz] / abs_z[nz]
 
-    # μ-law companding on magnitude, keep phase
     compressedData = sign_z * (np.log(1 + mu * abs_z) / np.log(1 + mu))
 
     quantizationLevels = 2 ** (bitWidth - 2)
@@ -270,20 +231,16 @@ def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
     noiseMultiplier_map = {8: 0.25, 9: 0.20, 10: 0.18, 12: 0.15, 14: 0.10}
     noiseMultiplier = noiseMultiplier_map.get(bitWidth, 0.25)
 
-    # MATLAB randn -> real Gaussian noise
-    noise = stepSize * noiseMultiplier * rng.standard_normal(size=compressedData.shape)
-
+    noise = stepSize * noiseMultiplier * rng.standard_normal(size=compressedData.shape)  # real noise
     qscale = (quantizationLevels - 2)
     quantizedData = np.round((compressedData + noise) * qscale) / qscale
 
-    # expand
     decompressionScaling = 1 + 0.03 * noiseMultiplier
     abs_q = np.abs(quantizedData)
 
-    # sign for quantized complex
-    abs_q0 = abs_q > 0
     sign_q = np.zeros_like(quantizedData)
-    sign_q[abs_q0] = quantizedData[abs_q0] / abs_q[abs_q0]
+    nzq = abs_q > 0
+    sign_q[nzq] = quantizedData[nzq] / abs_q[nzq]
 
     decompressedData = sign_q * (1 / mu) * ((1 + mu) ** abs_q - 1)
     decompressedData = decompressedData * decompressionScaling
@@ -298,9 +255,8 @@ def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
     return compressed.astype(np.complex128), float(CR)
 
 
-
 # -----------------------------
-# Compression: Modulation (lossless, CR formula like MATLAB)
+# Compression: Modulation (lossless)
 # -----------------------------
 def modulation_compression(data: np.ndarray, bitWidth: int, modOrder: int):
     data = np.asarray(data).reshape(-1).astype(np.complex128)
@@ -309,7 +265,7 @@ def modulation_compression(data: np.ndarray, bitWidth: int, modOrder: int):
         return {"compressed": np.zeros_like(data), "CR": 1.0, "EVM": 0.0}
 
     normalizedData = data / maxValue
-    compressed = normalizedData * maxValue  # lossless
+    compressed = normalizedData * maxValue
 
     originalBitWidth = 32
     numSymbols = data.size
@@ -321,7 +277,7 @@ def modulation_compression(data: np.ndarray, bitWidth: int, modOrder: int):
 
 
 # -----------------------------
-# Plot: CR vs Bitwidth (subplots, like MATLAB helper)
+# Plot: CR vs Bitwidth (subplots)
 # -----------------------------
 def plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels):
     numTechniques = len(results)
@@ -337,14 +293,14 @@ def plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels):
         ax.set_title(f"CR vs Bitwidth - {results[i]['methodName']}")
 
         colors = plt.cm.tab10(np.linspace(0, 1, len(modulationOrders)))
-        markers = ['o', 's', 'd', '^']  # extended for 4 modulations
+        markers = ['o', 's', 'd', '^']  # 4 modulations
 
         for j, modOrder in enumerate(modulationOrders):
             valid = (np.array(results[i]["modulationOrder"]) == modOrder)
             bitWidths = np.array(results[i]["bitWidth"])[valid]
             CRs = np.array(results[i]["CR"])[valid]
-
             sortIdx = np.argsort(bitWidths)
+
             ax.plot(bitWidths[sortIdx], CRs[sortIdx],
                     marker=markers[j % len(markers)],
                     linewidth=1.5,
@@ -358,34 +314,19 @@ def plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels):
 
 
 # -----------------------------
-# Main: MATLAB-like analysis loop (no DL)
+# Main: analysis loop
 # -----------------------------
 def run_compression_analysis():
     numSamples = int(1e5)
     originalBitWidth = 32
 
-    # ✅ Corrected modulation orders
-    modulationOrders = [2, 4, 16, 64]  # BPSK, QPSK, 16-QAM, 64-QAM
+    modulationOrders = [2, 4, 16, 64]
     mod_labels = {2: "BPSK", 4: "QPSK", 16: "16-QAM", 64: "64-QAM"}
-
     bitWidths = [8, 9, 10, 12, 14]
 
-    # ===== Block-size selection (O-RAN/NR-consistent) =====
-    # In O-RAN fronthaul compression, quantization parameters (scale/exponent/shift)
-    # are commonly shared over a PRB-level granularity. Since a PRB spans 12 subcarriers
-    # per OFDM symbol, we set blockSize = 12 for all modulation orders. This avoids
-    # coupling block granularity with the modulation format and enables fair CR–EVM
-    # comparisons across compression schemes.
-    blockSize = 12
+    blockSize = 12  # PRB-level granularity
 
-    compressionMethods = [
-        bfp_compression,
-        bsc_compression,
-        mu_law_compression,
-        modulation_compression
-    ]
     methodNames = ["BFP", "BlockScaling", "MuLaw", "Modulation"]
-
     results = []
     for name in methodNames:
         results.append({
@@ -400,8 +341,9 @@ def run_compression_analysis():
 
     print("Starting Compression Analysis...")
 
-    for mIdx, methodName in enumerate(methodNames):
+    for methodName in methodNames:
         print(f"\nAnalyzing Method: {methodName}")
+        mIdx = methodNames.index(methodName)
 
         for modOrder in modulationOrders:
             dataBits = rng.integers(0, modOrder, size=numSamples, dtype=np.int32)
@@ -445,13 +387,13 @@ def run_compression_analysis():
 
 
 def plot_all_figures(results, modulationOrders, mod_labels):
-    # =========================
-    # 1) CR vs EVM for each method separately (subplots)
-    # =========================
     numTechniques = len(results)
     numRows = int(np.ceil(np.sqrt(numTechniques)))
     numCols = int(np.ceil(numTechniques / numRows))
 
+    # =========================
+    # 1) CR vs EVM for each method separately (subplots)
+    # =========================
     plt.figure()
     for i in range(numTechniques):
         ax = plt.subplot(numRows, numCols, i + 1)
@@ -481,39 +423,69 @@ def plot_all_figures(results, modulationOrders, mod_labels):
     plt.tight_layout(rect=[0, 0.02, 1, 0.95])
 
     # =========================
-    # 2) Combined Plot: CR vs EVM for all methods together
+    # 2) Combined Plot: CR vs EVM (manual legends)
     # =========================
-    plt.figure()
-    plt.grid(True)
-    plt.xlabel("Compression Ratio (CR)")
-    plt.ylabel("EVM (%)")
-    plt.title("CR vs EVM for All Compression Methods")
+    fig, ax = plt.subplots()
+    ax.grid(True)
+    ax.set_xlabel("Compression Ratio (CR)")
+    ax.set_ylabel("EVM (%)")
+    ax.set_title("CR vs EVM for All Compression Methods")
 
-    colors = plt.cm.tab10(np.linspace(0, 1, numTechniques))
-    markers = ['o', 's', 'd', '^', 'v', 'p', 'h', 'x']
+    # Visual encoding:
+    # - Color/linestyle => method
+    # - Marker => modulation
+    method_style = {
+        "BFP":         {"color": "tab:blue", "linestyle": "-"},
+        "BlockScaling": {"color": "tab:red",  "linestyle": "-"},
+        "MuLaw":       {"color": "tab:pink", "linestyle": "--"},
+        "Modulation":  {"color": "tab:cyan", "linestyle": "-"},
+    }
+    marker_map = {2: 'x', 4: 'o', 16: 's', 64: 'd'}
 
+    # Plot everything WITHOUT putting method×modulation into labels
     for i in range(numTechniques):
         methodName = results[i]["methodName"]
+        sty = method_style[methodName]
+
         for modOrder in modulationOrders:
             valid = (np.array(results[i]["modulationOrder"]) == modOrder)
+            CR_values = np.array(results[i]["CR"])[valid]
+            EVM_values = np.array(results[i]["EVM"])[valid]
 
-            if "MuLaw" in methodName:
-                lineStyle = '--'
-                markerStyle = 'd'
-            else:
-                lineStyle = '-'
-                markerStyle = markers[(modOrder % len(markers))]
+            ax.plot(CR_values, EVM_values,
+                    linestyle=sty["linestyle"],
+                    color=sty["color"],
+                    marker=marker_map[modOrder],
+                    linewidth=1.5,
+                    markersize=6)
 
-            plt.plot(np.array(results[i]["CR"])[valid],
-                     np.array(results[i]["EVM"])[valid],
-                     lineStyle,
-                     marker=markerStyle,
-                     linewidth=1.5,
-                     markersize=6,
-                     color=colors[i],
-                     label=f"{methodName} - {mod_labels[modOrder]}")
+    # ---- Manual Legend #1: Modulation (different labels for different modulations) ----
+    mod_handles = []
+    for M in modulationOrders:
+        mod_handles.append(
+            Line2D([0], [0],
+                   color="black",
+                   marker=marker_map[M],
+                   linestyle="None",
+                   markersize=7,
+                   label=mod_labels[M])
+        )
 
-    plt.legend(loc="best")
+    # ---- Manual Legend #2: Methods ----
+    method_handles = []
+    for mn, sty in method_style.items():
+        method_handles.append(
+            Line2D([0], [0],
+                   color=sty["color"],
+                   linestyle=sty["linestyle"],
+                   linewidth=2.0,
+                   label=mn)
+        )
+
+    # Place two separate legends
+    leg1 = ax.legend(handles=mod_handles, title="Modulation", loc="upper left", frameon=True)
+    ax.add_artist(leg1)
+    ax.legend(handles=method_handles, title="Compression Method", loc="lower left", frameon=True)
 
     # =========================
     # 3) Bar Chart: Average EVM per method
