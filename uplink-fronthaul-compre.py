@@ -1,43 +1,45 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-Compression Analysis for 5G/O-RAN Fronthaul (Python version, no Deep Learning)
-
-Fixes applied:
-- BPSK  -> modOrder = 2
-- QPSK  -> modOrder = 4
-- 16-QAM-> modOrder = 16
-- 64-QAM-> modOrder = 64
-
-Figures:
-1) Subplots (one per method): CR vs EVM
-2) Combined plot: CR vs EVM for all methods  (THIS ONE uses a manual legend:
-   - Legend #1: Modulation labels (BPSK/QPSK/16-QAM/64-QAM) via markers
-   - Legend #2: Compression method labels (BFP/BlockScaling/MuLaw/Modulation) via colors/linestyles
-3) Bar chart: Average EVM per method
-4) Subplots (one per method): CR vs Bitwidth
-
-Block-size selection note:
-- In O-RAN/NR fronthaul compression, quantization parameters are often shared over a PRB-level granularity.
-  A PRB spans 12 subcarriers per OFDM symbol, thus we set blockSize = 12 for ALL modulation orders.
-"""
-
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import tikzplotlib as tikz
 
-# -----------------------------
-# Reproducibility
-# -----------------------------
 rng = np.random.default_rng(42)
+
+TEX_DIR = "tex_figures"
+os.makedirs(TEX_DIR, exist_ok=True)
+
+
+def _sanitize_for_tikz(fig: plt.Figure):
+    """
+    Work around tikzplotlib/matplotlib private API incompatibilities:
+    - Force all Line2D objects to have solid linestyle to avoid dashSeq access.
+    """
+    for ax in fig.get_axes():
+        # Lines in the axes
+        for line in ax.get_lines():
+            line.set_linestyle("-")  # avoid dashed patterns that trigger _us_dashSeq
+        # Legend lines (sometimes stored separately)
+        leg = ax.get_legend()
+        if leg is not None:
+            for legline in leg.get_lines():
+                legline.set_linestyle("-")
+
+
+def save_tex(fig: plt.Figure, name: str):
+    path = os.path.join(TEX_DIR, f"{name}.tex")
+    _sanitize_for_tikz(fig)
+    tikz.save(path, figure=fig)
+    print(f"[Saved TEX] {path}")
 
 
 # -----------------------------
 # QAM/BPSK Modulation (UnitAveragePower style)
 # -----------------------------
 def constellation_unit_power(M: int) -> np.ndarray:
-    """Returns constellation points with unit average power."""
     if M == 2:
         return np.array([1 + 0j, -1 + 0j], dtype=np.complex128)
 
@@ -48,12 +50,11 @@ def constellation_unit_power(M: int) -> np.ndarray:
     levels = np.arange(-(m_side - 1), m_side, 2)
     xv, yv = np.meshgrid(levels, levels)
     const = (xv + 1j * yv).flatten().astype(np.complex128)
-    const /= np.sqrt(np.mean(np.abs(const) ** 2))  # UnitAveragePower normalize
+    const /= np.sqrt(np.mean(np.abs(const) ** 2))
     return const
 
 
 def qammod_from_integers(data: np.ndarray, M: int) -> np.ndarray:
-    """MATLAB-like qammod(data, M, 'UnitAveragePower', true) where data are integers [0..M-1]."""
     data = np.asarray(data).astype(int).ravel()
     const = constellation_unit_power(M)
     if np.any(data < 0) or np.any(data >= M):
@@ -61,9 +62,6 @@ def qammod_from_integers(data: np.ndarray, M: int) -> np.ndarray:
     return const[data]
 
 
-# -----------------------------
-# EVM (match MATLAB compute_evm behavior)
-# -----------------------------
 def compute_evm_percent(original: np.ndarray, compressed: np.ndarray, modOrder: int, methodName: str) -> float:
     if methodName == "Modulation":
         return 0.0
@@ -115,10 +113,8 @@ def _process_component_bfp(data: np.ndarray, blockSize: int, exponentBitWidth: i
                                 2 ** (exponentBitWidth - 1) - 1)
 
         scaleFactor = 2 ** (-blockExponent)
-
         quantizedBlock = np.round((block * scaleFactor) * maxLevel) / maxLevel
         quantizedBlock[np.abs(quantizedBlock) < threshold] = 0
-
         compressed[s:e] = quantizedBlock / scaleFactor
 
     return compressed, int(metadataBits)
@@ -127,7 +123,6 @@ def _process_component_bfp(data: np.ndarray, blockSize: int, exponentBitWidth: i
 def bfp_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: int = 12):
     exponentBitWidth = int(np.ceil(0.3 * bitWidth))
     mantissaBitWidth = bitWidth - exponentBitWidth
-
     compressed, metadataBits = _process_component_bfp(data, blockSize, exponentBitWidth, mantissaBitWidth)
 
     originalBitWidth = 32
@@ -165,10 +160,8 @@ def _process_block_scaling(data: np.ndarray, blockSize: int, exponentBitWidth: i
                                 2 ** (exponentBitWidth - 1) - 1)
 
         scaleFactor = 2 ** (-blockExponent)
-
         quantizedBlock = np.round((block * scaleFactor) * maxLevel) / maxLevel
         quantizedBlock[np.abs(quantizedBlock) < threshold] = 0
-
         out[s:e] = quantizedBlock / scaleFactor
 
     return out, int(metadataBits)
@@ -206,7 +199,7 @@ def bsc_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: i
 
 
 # -----------------------------
-# Compression: μ-law (MATLAB-like complex sign behavior)
+# Compression: μ-law
 # -----------------------------
 def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
     mu = 200
@@ -231,7 +224,7 @@ def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
     noiseMultiplier_map = {8: 0.25, 9: 0.20, 10: 0.18, 12: 0.15, 14: 0.10}
     noiseMultiplier = noiseMultiplier_map.get(bitWidth, 0.25)
 
-    noise = stepSize * noiseMultiplier * rng.standard_normal(size=compressedData.shape)  # real noise
+    noise = stepSize * noiseMultiplier * rng.standard_normal(size=compressedData.shape)
     qscale = (quantizationLevels - 2)
     quantizedData = np.round((compressedData + noise) * qscale) / qscale
 
@@ -244,7 +237,6 @@ def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
 
     decompressedData = sign_q * (1 / mu) * ((1 + mu) ** abs_q - 1)
     decompressedData = decompressedData * decompressionScaling
-
     compressed = decompressedData * maxVal
 
     originalBitWidth = 32
@@ -255,9 +247,6 @@ def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
     return compressed.astype(np.complex128), float(CR)
 
 
-# -----------------------------
-# Compression: Modulation (lossless)
-# -----------------------------
 def modulation_compression(data: np.ndarray, bitWidth: int, modOrder: int):
     data = np.asarray(data).reshape(-1).astype(np.complex128)
     maxValue = np.max(np.abs(data))
@@ -276,15 +265,12 @@ def modulation_compression(data: np.ndarray, bitWidth: int, modOrder: int):
     return {"compressed": compressed, "CR": float(CR), "EVM": 0.0}
 
 
-# -----------------------------
-# Plot: CR vs Bitwidth (subplots)
-# -----------------------------
 def plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels):
     numTechniques = len(results)
     numRows = int(np.ceil(np.sqrt(numTechniques)))
     numCols = int(np.ceil(numTechniques / numRows))
 
-    plt.figure()
+    fig = plt.figure()
     for i in range(numTechniques):
         ax = plt.subplot(numRows, numCols, i + 1)
         ax.grid(True)
@@ -293,7 +279,7 @@ def plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels):
         ax.set_title(f"CR vs Bitwidth - {results[i]['methodName']}")
 
         colors = plt.cm.tab10(np.linspace(0, 1, len(modulationOrders)))
-        markers = ['o', 's', 'd', '^']  # 4 modulations
+        markers = ['o', 's', 'd', '^']
 
         for j, modOrder in enumerate(modulationOrders):
             valid = (np.array(results[i]["modulationOrder"]) == modOrder)
@@ -309,13 +295,12 @@ def plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels):
 
         ax.legend(loc="best")
 
-    plt.suptitle("CR vs Bitwidth for All Compression Techniques")
-    plt.tight_layout(rect=[0, 0.02, 1, 0.95])
+    fig.suptitle("CR vs Bitwidth for All Compression Techniques")
+    fig.tight_layout(rect=[0, 0.02, 1, 0.95])
+    save_tex(fig, "CR_vs_Bitwidth_subplots")
+    return fig
 
 
-# -----------------------------
-# Main: analysis loop
-# -----------------------------
 def run_compression_analysis():
     numSamples = int(1e5)
     originalBitWidth = 32
@@ -323,21 +308,18 @@ def run_compression_analysis():
     modulationOrders = [2, 4, 16, 64]
     mod_labels = {2: "BPSK", 4: "QPSK", 16: "16-QAM", 64: "64-QAM"}
     bitWidths = [8, 9, 10, 12, 14]
-
-    blockSize = 12  # PRB-level granularity
+    blockSize = 12
 
     methodNames = ["BFP", "BlockScaling", "MuLaw", "Modulation"]
-    results = []
-    for name in methodNames:
-        results.append({
-            "methodName": name,
-            "bitWidth": [],
-            "CR": [],
-            "EVM": [],
-            "originalSize": [],
-            "compressedSize": [],
-            "modulationOrder": []
-        })
+    results = [{
+        "methodName": name,
+        "bitWidth": [],
+        "CR": [],
+        "EVM": [],
+        "originalSize": [],
+        "compressedSize": [],
+        "modulationOrder": []
+    } for name in methodNames]
 
     print("Starting Compression Analysis...")
 
@@ -379,8 +361,7 @@ def run_compression_analysis():
                 results[mIdx]["compressedSize"].append(compressedSize / 1e3)
                 results[mIdx]["modulationOrder"].append(modOrder)
 
-                print(f"    CR: {CR:.2f}, EVM: {EVM:.2f}%, "
-                      f"Original: {originalSize/1e3:.2f} kb, Compressed: {compressedSize/1e3:.2f} kb")
+                print(f"    CR: {CR:.2f}, EVM: {EVM:.2f}%")
 
     print("\nCompression Analysis Completed.\n")
     return results, modulationOrders, mod_labels
@@ -391,10 +372,8 @@ def plot_all_figures(results, modulationOrders, mod_labels):
     numRows = int(np.ceil(np.sqrt(numTechniques)))
     numCols = int(np.ceil(numTechniques / numRows))
 
-    # =========================
-    # 1) CR vs EVM for each method separately (subplots)
-    # =========================
-    plt.figure()
+    # 1) CR vs EVM subplots
+    fig1 = plt.figure()
     for i in range(numTechniques):
         ax = plt.subplot(numRows, numCols, i + 1)
         ax.grid(True)
@@ -419,30 +398,25 @@ def plot_all_figures(results, modulationOrders, mod_labels):
 
         ax.legend(loc="best")
 
-    plt.suptitle("CR vs EVM for All Compression Techniques")
-    plt.tight_layout(rect=[0, 0.02, 1, 0.95])
+    fig1.suptitle("CR vs EVM for All Compression Techniques")
+    fig1.tight_layout(rect=[0, 0.02, 1, 0.95])
+    save_tex(fig1, "CR_vs_EVM_subplots")
 
-    # =========================
-    # 2) Combined Plot: CR vs EVM (manual legends)
-    # =========================
-    fig, ax = plt.subplots()
+    # 2) Combined plot (manual legends)
+    fig2, ax = plt.subplots()
     ax.grid(True)
     ax.set_xlabel("Compression Ratio (CR)")
     ax.set_ylabel("EVM (%)")
     ax.set_title("CR vs EVM for All Compression Methods")
 
-    # Visual encoding:
-    # - Color/linestyle => method
-    # - Marker => modulation
     method_style = {
-        "BFP":         {"color": "tab:blue", "linestyle": "-"},
+        "BFP":          {"color": "tab:blue", "linestyle": "-"},
         "BlockScaling": {"color": "tab:red",  "linestyle": "-"},
-        "MuLaw":       {"color": "tab:pink", "linestyle": "--"},
-        "Modulation":  {"color": "tab:cyan", "linestyle": "-"},
+        "MuLaw":        {"color": "tab:pink", "linestyle": "--"},  # will be sanitized to '-'
+        "Modulation":   {"color": "tab:cyan", "linestyle": "-"},
     }
     marker_map = {2: 'x', 4: 'o', 16: 's', 64: 'd'}
 
-    # Plot everything WITHOUT putting method×modulation into labels
     for i in range(numTechniques):
         methodName = results[i]["methodName"]
         sty = method_style[methodName]
@@ -459,38 +433,24 @@ def plot_all_figures(results, modulationOrders, mod_labels):
                     linewidth=1.5,
                     markersize=6)
 
-    # ---- Manual Legend #1: Modulation (different labels for different modulations) ----
-    mod_handles = []
-    for M in modulationOrders:
-        mod_handles.append(
-            Line2D([0], [0],
-                   color="black",
-                   marker=marker_map[M],
-                   linestyle="None",
-                   markersize=7,
-                   label=mod_labels[M])
-        )
+    mod_handles = [
+        Line2D([0], [0], color="black", marker=marker_map[M], linestyle="None", markersize=7, label=mod_labels[M])
+        for M in modulationOrders
+    ]
+    method_handles = [
+        Line2D([0], [0], color=sty["color"], linestyle=sty["linestyle"], linewidth=2.0, label=mn)
+        for mn, sty in method_style.items()
+    ]
 
-    # ---- Manual Legend #2: Methods ----
-    method_handles = []
-    for mn, sty in method_style.items():
-        method_handles.append(
-            Line2D([0], [0],
-                   color=sty["color"],
-                   linestyle=sty["linestyle"],
-                   linewidth=2.0,
-                   label=mn)
-        )
-
-    # Place two separate legends
     leg1 = ax.legend(handles=mod_handles, title="Modulation", loc="upper left", frameon=True)
     ax.add_artist(leg1)
     ax.legend(handles=method_handles, title="Compression Method", loc="lower left", frameon=True)
 
-    # =========================
-    # 3) Bar Chart: Average EVM per method
-    # =========================
-    plt.figure()
+    fig2.tight_layout()
+    save_tex(fig2, "CR_vs_EVM_combined")
+
+    # 3) Bar chart
+    fig3 = plt.figure()
     avgEVMs = [float(np.mean(r["EVM"])) for r in results]
     x = np.arange(len(avgEVMs))
 
@@ -504,9 +464,10 @@ def plot_all_figures(results, modulationOrders, mod_labels):
     for i, v in enumerate(avgEVMs):
         plt.text(i, v + 0.1, f"{v:.2f}", ha="center", fontsize=10, fontweight="bold")
 
-    # =========================
-    # 4) CR vs Bitwidth for each method separately (subplots)
-    # =========================
+    fig3.tight_layout()
+    save_tex(fig3, "Average_EVM_bar")
+
+    # 4) CR vs Bitwidth subplots
     plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels)
 
     plt.show()

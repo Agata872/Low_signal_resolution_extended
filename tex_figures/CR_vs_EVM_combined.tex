@@ -1,0 +1,174 @@
+% This file was created with tikzplotlib v0.10.1.
+\begin{tikzpicture}
+
+\definecolor{crimson2143940}{RGB}{214,39,40}
+\definecolor{darkgray176}{RGB}{176,176,176}
+\definecolor{darkturquoise23190207}{RGB}{23,190,207}
+\definecolor{lightgray204}{RGB}{204,204,204}
+\definecolor{orchid227119194}{RGB}{227,119,194}
+\definecolor{steelblue31119180}{RGB}{31,119,180}
+
+\begin{axis}[
+legend cell align={left},
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(0.03,0.03)},
+  anchor=south west,
+  draw=lightgray204
+},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(0.03,0.97)},
+  anchor=north west,
+  draw=lightgray204
+},
+tick align=outside,
+tick pos=left,
+title={CR vs EVM for All Compression Methods},
+x grid style={darkgray176},
+xlabel={Compression Ratio (CR)},
+xmajorgrids,
+xmin=1.48, xmax=4.12,
+xtick style={color=black},
+y grid style={darkgray176},
+ylabel={EVM (\%)},
+ymajorgrids,
+ymin=-1.39968064661614, ymax=29.3932935789389,
+ytick style={color=black}
+]
+\addplot [semithick, steelblue31119180, mark=x, mark size=3, mark options={solid}, forget plot]
+table {%
+3.87877847568854 6.66666666666667
+3.45945197956329 3.2258064516129
+3.12194512791195 1.58730158730158
+2.59458898467247 0.787401574803148
+2.21964804705654 0.392156862745097
+};
+\addplot [semithick, steelblue31119180, mark=*, mark size=3, mark options={solid}, forget plot]
+table {%
+3.87877847568854 5.71909584179366
+3.45945197956329 0.363543136155146
+3.12194512791195 1.22952897711717
+2.59458898467247 0.219858750849259
+2.21964804705654 0.173160303075644
+};
+\addplot [semithick, steelblue31119180, mark=square*, mark size=3, mark options={solid}, forget plot]
+table {%
+3.87877847568854 7.78148832542483
+3.45945197956329 3.01343516943772
+3.12194512791195 0.584650484208535
+2.59458898467247 0.601055425115935
+2.21964804705654 0.378659445067995
+};
+\addplot [semithick, steelblue31119180, mark=diamond*, mark size=3, mark options={solid}, forget plot]
+table {%
+3.87877847568854 10.3895852018408
+3.45945197956329 4.58393362681827
+3.12194512791195 2.40609905547084
+2.59458898467247 1.34805972932461
+2.21964804705654 0.631161599184967
+};
+\addplot [semithick, crimson2143940, mark=x, mark size=3, mark options={solid}, forget plot]
+table {%
+3.83998771203932 3.2258064516129
+3.42856163268105 1.58730158730158
+3.09676620189367 0.787401574803148
+2.55999180802621 0.392156862745097
+2.20689046375044 0.0977517106549363
+};
+\addplot [semithick, crimson2143940, mark=*, mark size=3, mark options={solid}, forget plot]
+table {%
+3.83998771203932 0.363543136155146
+3.42856163268105 1.01525445522109
+3.09676620189367 0.219858750849259
+2.55999180802621 0.173160303075628
+2.20689046375044 0.0511822487049984
+};
+\addplot [semithick, crimson2143940, mark=square*, mark size=3, mark options={solid}, forget plot]
+table {%
+3.76468816617334 3.44744708678807
+3.36840686986581 2.19730650057634
+3.04760743768595 0.584650484208535
+2.52630515239936 0.601055425115935
+2.15729367508461 0.218750314965418
+};
+\addplot [semithick, crimson2143940, mark=diamond*, mark size=3, mark options={solid}, forget plot]
+table {%
+3.69228497055403 27.9936129323228
+3.31032656371551 10.2541834284753
+2.999985000075 4.53931905201268
+2.4934935402933 2.37144103009632
+2.13332195561624 1.33928362122837
+};
+\addplot [semithick, orchid227119194, mark=x, mark size=3, mark options={solid}, forget plot]
+table {%
+4 2.00853743650474
+3.55555555555556 0.772489647324448
+3.2 0.563196477434047
+2.66666666666667 0.450320609060764
+2.28571428571429 0.299999999999989
+};
+\addplot [semithick, orchid227119194, mark=*, mark size=3, mark options={solid}, forget plot]
+table {%
+4 2.85167736943747
+3.55555555555556 0.471693614319223
+3.2 1.47813855893108
+2.66666666666667 0.661638056580415
+2.28571428571429 0.319360779596761
+};
+\addplot [semithick, orchid227119194, mark=square*, mark size=3, mark options={solid}, forget plot]
+table {%
+4 5.84999022955135
+3.55555555555556 1.561232201969
+3.2 2.00761930549036
+2.66666666666667 0.766070007765731
+2.28571428571429 0.466906652520491
+};
+\addplot [semithick, orchid227119194, mark=diamond*, mark size=3, mark options={solid}, forget plot]
+table {%
+4 5.60075341381177
+3.55555555555556 2.19596657482322
+3.2 1.85977891807211
+2.66666666666667 1.00811075406173
+2.28571428571429 0.601595584828697
+};
+\addplot [semithick, darkturquoise23190207, mark=x, mark size=3, mark options={solid}, forget plot]
+table {%
+3.55555555555556 0
+3.2 0
+2.90909090909091 0
+2.46153846153846 0
+2.13333333333333 0
+};
+\addplot [semithick, darkturquoise23190207, mark=*, mark size=3, mark options={solid}, forget plot]
+table {%
+3.2 0
+2.90909090909091 0
+2.66666666666667 0
+2.28571428571429 0
+2 0
+};
+\addplot [semithick, darkturquoise23190207, mark=square*, mark size=3, mark options={solid}, forget plot]
+table {%
+2.66666666666667 0
+2.46153846153846 0
+2.28571428571429 0
+2 0
+1.77777777777778 0
+};
+\addplot [semithick, darkturquoise23190207, mark=diamond*, mark size=3, mark options={solid}, forget plot]
+table {%
+2.28571428571429 0
+2.13333333333333 0
+2 0
+1.77777777777778 0
+1.6 0
+};
+\end{axis}
+
+\end{tikzpicture}

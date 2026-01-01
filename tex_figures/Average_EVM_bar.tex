@@ -1,0 +1,53 @@
+% This file was created with tikzplotlib v0.10.1.
+\begin{tikzpicture}
+
+\definecolor{darkgray176}{RGB}{176,176,176}
+\definecolor{steelblue31119180}{RGB}{31,119,180}
+
+\begin{axis}[
+tick align=outside,
+tick pos=left,
+title={Average EVM Comparison},
+x grid style={darkgray176},
+xlabel={Compression Methods},
+xmin=-0.59, xmax=3.59,
+xtick style={color=black},
+xtick={0,1,2,3},
+xticklabels={BFP,BlockScaling,MuLaw,Modulation},
+y grid style={darkgray176},
+ylabel={Average EVM (\%)},
+ymajorgrids,
+ymin=0, ymax=3.22667451523796,
+ytick style={color=black}
+]
+\draw[draw=none,fill=steelblue31119180] (axis cs:-0.4,0) rectangle (axis cs:0.4,2.60413241070074);
+\draw[draw=none,fill=steelblue31119180] (axis cs:0.6,0) rectangle (axis cs:1.4,3.07302334784568);
+\draw[draw=none,fill=steelblue31119180] (axis cs:1.6,0) rectangle (axis cs:2.4,1.58975380960417);
+\draw[draw=none,fill=steelblue31119180] (axis cs:2.6,0) rectangle (axis cs:3.4,0);
+\draw (axis cs:0,2.70413241070074) node[
+  scale=0.5,
+  anchor=base,
+  text=black,
+  rotate=0.0
+]{\bfseries 2.60};
+\draw (axis cs:1,3.17302334784568) node[
+  scale=0.5,
+  anchor=base,
+  text=black,
+  rotate=0.0
+]{\bfseries 3.07};
+\draw (axis cs:2,1.68975380960417) node[
+  scale=0.5,
+  anchor=base,
+  text=black,
+  rotate=0.0
+]{\bfseries 1.59};
+\draw (axis cs:3,0.1) node[
+  scale=0.5,
+  anchor=base,
+  text=black,
+  rotate=0.0
+]{\bfseries 0.00};
+\end{axis}
+
+\end{tikzpicture}

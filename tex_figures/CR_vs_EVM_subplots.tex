@@ -1,0 +1,256 @@
+% This file was created with tikzplotlib v0.10.1.
+\begin{tikzpicture}
+
+\definecolor{crimson2143940}{RGB}{214,39,40}
+\definecolor{darkgray176}{RGB}{176,176,176}
+\definecolor{darkturquoise23190207}{RGB}{23,190,207}
+\definecolor{lightgray204}{RGB}{204,204,204}
+\definecolor{orchid227119194}{RGB}{227,119,194}
+\definecolor{steelblue31119180}{RGB}{31,119,180}
+
+\begin{groupplot}[group style={group size=2 by 2}]
+\nextgroupplot[
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(0.03,0.97)},
+  anchor=north west,
+  draw=lightgray204
+},
+tick align=outside,
+tick pos=left,
+title={CR vs EVM - BFP},
+x grid style={darkgray176},
+xlabel={Compression Ratio (CR)},
+xmajorgrids,
+xmin=2.13669152562494, xmax=3.96173499712014,
+xtick style={color=black},
+y grid style={darkgray176},
+ylabel={EVM (\%)},
+ymajorgrids,
+ymin=-0.337660941862614, ymax=10.9004064467791,
+ytick style={color=black}
+]
+\addplot [semithick, steelblue31119180, mark=*, mark size=3, mark options={solid}]
+table {%
+2.21964804705654 0.392156862745097
+2.59458898467247 0.787401574803148
+3.12194512791195 1.58730158730158
+3.45945197956329 3.2258064516129
+3.87877847568854 6.66666666666667
+};
+\addlegendentry{BPSK}
+\addplot [semithick, crimson2143940, mark=square*, mark size=3, mark options={solid}]
+table {%
+2.21964804705654 0.173160303075644
+2.59458898467247 0.219858750849259
+3.12194512791195 1.22952897711717
+3.45945197956329 0.363543136155146
+3.87877847568854 5.71909584179366
+};
+\addlegendentry{QPSK}
+\addplot [semithick, orchid227119194, mark=diamond*, mark size=3, mark options={solid}]
+table {%
+2.21964804705654 0.378659445067995
+2.59458898467247 0.601055425115935
+3.12194512791195 0.584650484208535
+3.45945197956329 3.01343516943772
+3.87877847568854 7.78148832542483
+};
+\addlegendentry{16-QAM}
+\addplot [semithick, darkturquoise23190207, mark=triangle*, mark size=3, mark options={solid}]
+table {%
+2.21964804705654 0.631161599184967
+2.59458898467247 1.34805972932461
+3.12194512791195 2.40609905547084
+3.45945197956329 4.58393362681827
+3.87877847568854 10.3895852018408
+};
+\addlegendentry{64-QAM}
+
+\nextgroupplot[
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(0.03,0.97)},
+  anchor=north west,
+  draw=lightgray204
+},
+tick align=outside,
+tick pos=left,
+title={CR vs EVM - BlockScaling},
+x grid style={darkgray176},
+xlabel={Compression Ratio (CR)},
+xmajorgrids,
+xmin=2.04798866779508, xmax=3.92532099986048,
+xtick style={color=black},
+y grid style={darkgray176},
+ylabel={EVM (\%)},
+ymajorgrids,
+ymin=-1.34593928547589, ymax=29.3907344665036,
+ytick style={color=black}
+]
+\addplot [semithick, steelblue31119180, mark=*, mark size=3, mark options={solid}]
+table {%
+2.20689046375044 0.0977517106549363
+2.55999180802621 0.392156862745097
+3.09676620189367 0.787401574803148
+3.42856163268105 1.58730158730158
+3.83998771203932 3.2258064516129
+};
+\addlegendentry{BPSK}
+\addplot [semithick, crimson2143940, mark=square*, mark size=3, mark options={solid}]
+table {%
+2.20689046375044 0.0511822487049984
+2.55999180802621 0.173160303075628
+3.09676620189367 0.219858750849259
+3.42856163268105 1.01525445522109
+3.83998771203932 0.363543136155146
+};
+\addlegendentry{QPSK}
+\addplot [semithick, orchid227119194, mark=diamond*, mark size=3, mark options={solid}]
+table {%
+2.15729367508461 0.218750314965418
+2.52630515239936 0.601055425115935
+3.04760743768595 0.584650484208535
+3.36840686986581 2.19730650057634
+3.76468816617334 3.44744708678807
+};
+\addlegendentry{16-QAM}
+\addplot [semithick, darkturquoise23190207, mark=triangle*, mark size=3, mark options={solid}]
+table {%
+2.13332195561624 1.33928362122837
+2.4934935402933 2.37144103009632
+2.999985000075 4.53931905201268
+3.31032656371551 10.2541834284753
+3.69228497055403 27.9936129323228
+};
+\addlegendentry{64-QAM}
+
+\nextgroupplot[
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(0.03,0.97)},
+  anchor=north west,
+  draw=lightgray204
+},
+tick align=outside,
+tick pos=left,
+title={CR vs EVM - MuLaw},
+x grid style={darkgray176},
+xlabel={Compression Ratio (CR)},
+xmajorgrids,
+xmin=2.2, xmax=4.08571428571429,
+xtick style={color=black},
+y grid style={darkgray176},
+ylabel={EVM (\%)},
+ymajorgrids,
+ymin=0.0225004885224213, ymax=6.12748974102891,
+ytick style={color=black}
+]
+\addplot [semithick, steelblue31119180, mark=*, mark size=3, mark options={solid}]
+table {%
+2.28571428571429 0.299999999999989
+2.66666666666667 0.450320609060764
+3.2 0.563196477434047
+3.55555555555556 0.772489647324448
+4 2.00853743650474
+};
+\addlegendentry{BPSK}
+\addplot [semithick, crimson2143940, mark=square*, mark size=3, mark options={solid}]
+table {%
+2.28571428571429 0.319360779596761
+2.66666666666667 0.661638056580415
+3.2 1.47813855893108
+3.55555555555556 0.471693614319223
+4 2.85167736943747
+};
+\addlegendentry{QPSK}
+\addplot [semithick, orchid227119194, mark=diamond*, mark size=3, mark options={solid}]
+table {%
+2.28571428571429 0.466906652520491
+2.66666666666667 0.766070007765731
+3.2 2.00761930549036
+3.55555555555556 1.561232201969
+4 5.84999022955135
+};
+\addlegendentry{16-QAM}
+\addplot [semithick, darkturquoise23190207, mark=triangle*, mark size=3, mark options={solid}]
+table {%
+2.28571428571429 0.601595584828697
+2.66666666666667 1.00811075406173
+3.2 1.85977891807211
+3.55555555555556 2.19596657482322
+4 5.60075341381177
+};
+\addlegendentry{64-QAM}
+
+\nextgroupplot[
+legend cell align={left},
+legend style={fill opacity=0.8, draw opacity=1, text opacity=1, draw=lightgray204},
+tick align=outside,
+tick pos=left,
+title={CR vs EVM - Modulation},
+x grid style={darkgray176},
+xlabel={Compression Ratio (CR)},
+xmajorgrids,
+xmin=1.50222222222222, xmax=3.65333333333333,
+xtick style={color=black},
+y grid style={darkgray176},
+ylabel={EVM (\%)},
+ymajorgrids,
+ymin=-0.055, ymax=0.055,
+ytick style={color=black}
+]
+\addplot [semithick, steelblue31119180, mark=*, mark size=3, mark options={solid}]
+table {%
+2.13333333333333 0
+2.46153846153846 0
+2.90909090909091 0
+3.2 0
+3.55555555555556 0
+};
+\addlegendentry{BPSK}
+\addplot [semithick, crimson2143940, mark=square*, mark size=3, mark options={solid}]
+table {%
+2 0
+2.28571428571429 0
+2.66666666666667 0
+2.90909090909091 0
+3.2 0
+};
+\addlegendentry{QPSK}
+\addplot [semithick, orchid227119194, mark=diamond*, mark size=3, mark options={solid}]
+table {%
+1.77777777777778 0
+2 0
+2.28571428571429 0
+2.46153846153846 0
+2.66666666666667 0
+};
+\addlegendentry{16-QAM}
+\addplot [semithick, darkturquoise23190207, mark=triangle*, mark size=3, mark options={solid}]
+table {%
+1.6 0
+1.77777777777778 0
+2 0
+2.13333333333333 0
+2.28571428571429 0
+};
+\addlegendentry{64-QAM}
+\end{groupplot}
+
+\draw ({$(current bounding box.south west)!0.5!(current bounding box.south east)$}|-{$(current bounding box.south west)!0.98!(current bounding box.north west)$}) node[
+  scale=0.6,
+  anchor=north,
+  text=black,
+  rotate=0.0
+]{CR vs EVM for All Compression Techniques};
+\end{tikzpicture}
