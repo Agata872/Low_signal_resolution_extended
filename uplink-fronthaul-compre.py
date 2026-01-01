@@ -474,6 +474,7 @@ def plot_all_figures(results, modulationOrders, mod_labels):
 
 
 def main():
+
     results, modulationOrders, mod_labels = run_compression_analysis()
     plot_all_figures(results, modulationOrders, mod_labels)
 
