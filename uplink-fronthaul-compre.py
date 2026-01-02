@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import os
-import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import matplotlib.pyplot as plt
 import tikzplotlib as tikz
-
+import numpy as np
+from tool import bfp_compression, bsc_compression, mu_law_compression, modulation_compression
+from tool import _float_to_int_fs, _int_to_float_fs
 rng = np.random.default_rng(42)
 
 TEX_DIR = "tex_figures"
@@ -62,7 +63,11 @@ def qammod_from_integers(data: np.ndarray, M: int) -> np.ndarray:
     return const[data]
 
 
-def compute_evm_percent(original: np.ndarray, compressed: np.ndarray, modOrder: int, methodName: str) -> float:
+def compute_evm_percent(original: np.ndarray, compressed: np.ndarray, methodName: str) -> float:
+    """
+    Standard RMS EVM (%):
+        100 * sqrt( E[|e|^2] / E[|s|^2] )
+    """
     if methodName == "Modulation":
         return 0.0
 
@@ -72,197 +77,34 @@ def compute_evm_percent(original: np.ndarray, compressed: np.ndarray, modOrder: 
     signalPower = np.mean(np.abs(original) ** 2) + np.finfo(float).eps
     errorPower = np.mean(np.abs(original - compressed) ** 2)
 
-    if modOrder in (2, 4):
-        scalingFactor = 1.0
-    elif modOrder == 16:
-        scalingFactor = 1.5
-    elif modOrder == 64:
-        scalingFactor = 2.0
-    else:
-        scalingFactor = 1.0
+    return float(100.0 * np.sqrt(errorPower / signalPower))
 
-    evm = max(0.0, 100.0 * np.sqrt(errorPower / signalPower) * scalingFactor)
-    return float(evm)
+def make_fixed_point_reference_iq(iq: np.ndarray, iq_in_bitwidth: int = 16, fs: float | None = None) -> np.ndarray:
+    """
+    Simulate a realistic fronthaul 'original IQ' as fixed-point samples:
+      float IQ -> int (signed, iq_in_bitwidth, full-scale fs) -> float IQ_ref
+    This matches the thesis-style assumption where compression reduces IQ resolution
+    from a higher-bit representation.
 
+    fs:
+      - If None: use peak amplitude of the current iq vector (per-stream full-scale).
+      - If provided: fixed full-scale across experiments (often more realistic).
+    """
+    iq = np.asarray(iq, dtype=np.complex128).reshape(-1)
 
-# -----------------------------
-# Compression: BFP
-# -----------------------------
-def _process_component_bfp(data: np.ndarray, blockSize: int, exponentBitWidth: int, mantissaBitWidth: int):
-    data = np.asarray(data).reshape(-1)
-    numBlocks = int(np.ceil(len(data) / blockSize))
-    compressed = np.zeros_like(data, dtype=np.complex128)
+    if fs is None:
+        fs = float(np.max(np.abs(iq)))
+    if fs <= np.finfo(float).eps:
+        return np.zeros_like(iq, dtype=np.complex128)
 
-    metadataBits = numBlocks * exponentBitWidth
-    maxLevel = 2 ** (mantissaBitWidth - 1) - 1
-    threshold = 2 ** (-mantissaBitWidth)
+    I_int = _float_to_int_fs(iq.real, iq_in_bitwidth, fs)
+    Q_int = _float_to_int_fs(iq.imag, iq_in_bitwidth, fs)
 
-    for blk in range(numBlocks):
-        s = blk * blockSize
-        e = min((blk + 1) * blockSize, len(data))
-        block = data[s:e]
+    I_ref = _int_to_float_fs(I_int, iq_in_bitwidth, fs)
+    Q_ref = _int_to_float_fs(Q_int, iq_in_bitwidth, fs)
 
-        blockMax = np.max(np.abs(block))
-        if blockMax < np.finfo(float).eps:
-            compressed[s:e] = 0
-            continue
+    return (I_ref + 1j * Q_ref).astype(np.complex128)
 
-        blockExponent = np.ceil(np.log2(blockMax + np.finfo(float).eps))
-        blockExponent = np.clip(blockExponent,
-                                -2 ** (exponentBitWidth - 1),
-                                2 ** (exponentBitWidth - 1) - 1)
-
-        scaleFactor = 2 ** (-blockExponent)
-        quantizedBlock = np.round((block * scaleFactor) * maxLevel) / maxLevel
-        quantizedBlock[np.abs(quantizedBlock) < threshold] = 0
-        compressed[s:e] = quantizedBlock / scaleFactor
-
-    return compressed, int(metadataBits)
-
-
-def bfp_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: int = 12):
-    exponentBitWidth = int(np.ceil(0.3 * bitWidth))
-    mantissaBitWidth = bitWidth - exponentBitWidth
-    compressed, metadataBits = _process_component_bfp(data, blockSize, exponentBitWidth, mantissaBitWidth)
-
-    originalBitWidth = 32
-    originalSize = data.size * originalBitWidth
-    compressedSize = compressed.size * bitWidth + metadataBits
-    CR = originalSize / compressedSize
-    return compressed, float(CR)
-
-
-# -----------------------------
-# Compression: Block Scaling
-# -----------------------------
-def _process_block_scaling(data: np.ndarray, blockSize: int, exponentBitWidth: int, mantissaBitWidth: int):
-    data = np.asarray(data).reshape(-1)
-    numBlocks = int(np.ceil(len(data) / blockSize))
-    out = np.zeros_like(data, dtype=float)
-    metadataBits = numBlocks * exponentBitWidth
-
-    maxLevel = 2 ** (mantissaBitWidth - 1) - 1
-    threshold = 2 ** (-mantissaBitWidth)
-
-    for blk in range(numBlocks):
-        s = blk * blockSize
-        e = min((blk + 1) * blockSize, len(data))
-        block = data[s:e]
-
-        blockMax = np.max(np.abs(block))
-        if blockMax < np.finfo(float).eps:
-            out[s:e] = 0
-            continue
-
-        blockExponent = np.ceil(np.log2(blockMax + np.finfo(float).eps))
-        blockExponent = np.clip(blockExponent,
-                                -2 ** (exponentBitWidth - 1),
-                                2 ** (exponentBitWidth - 1) - 1)
-
-        scaleFactor = 2 ** (-blockExponent)
-        quantizedBlock = np.round((block * scaleFactor) * maxLevel) / maxLevel
-        quantizedBlock[np.abs(quantizedBlock) < threshold] = 0
-        out[s:e] = quantizedBlock / scaleFactor
-
-    return out, int(metadataBits)
-
-
-def bsc_compression(data: np.ndarray, bitWidth: int, modOrder: int, blockSize: int = 12):
-    if modOrder in (2, 4):
-        exponentBitWidth = int(np.ceil(0.2 * bitWidth))
-    elif modOrder == 16:
-        exponentBitWidth = int(np.ceil(0.3 * bitWidth))
-    elif modOrder == 64:
-        exponentBitWidth = int(np.ceil(0.4 * bitWidth))
-    else:
-        raise ValueError("Unsupported modulation order for this demo.")
-
-    mantissaBitWidth = bitWidth - exponentBitWidth
-
-    isComplexData = np.iscomplexobj(data)
-    if isComplexData:
-        real_part = np.real(data)
-        imag_part = np.imag(data)
-        cr, meta_r = _process_block_scaling(real_part, blockSize, exponentBitWidth, mantissaBitWidth)
-        ci, meta_i = _process_block_scaling(imag_part, blockSize, exponentBitWidth, mantissaBitWidth)
-        compressed = cr + 1j * ci
-        metadataBits = meta_r + meta_i
-    else:
-        compressed, metadataBits = _process_block_scaling(data, blockSize, exponentBitWidth, mantissaBitWidth)
-
-    originalBitWidth = 32
-    originalSize = data.size * originalBitWidth * (1 + int(isComplexData))
-    nonzeros = np.count_nonzero(compressed)
-    compressedSize = (nonzeros * bitWidth + metadataBits) * (1 + int(isComplexData))
-    CR = originalSize / compressedSize if compressedSize > 0 else 1.0
-    return compressed.astype(np.complex128), float(CR)
-
-
-# -----------------------------
-# Compression: μ-law
-# -----------------------------
-def mu_law_compression(data: np.ndarray, bitWidth: int, _modOrder_unused: int):
-    mu = 200
-    data = np.asarray(data).reshape(-1).astype(np.complex128)
-
-    maxVal = np.max(np.abs(data))
-    if maxVal == 0:
-        return np.zeros_like(data), 1.0
-
-    normalizedData = data / maxVal
-
-    abs_z = np.abs(normalizedData)
-    sign_z = np.zeros_like(normalizedData)
-    nz = abs_z > 0
-    sign_z[nz] = normalizedData[nz] / abs_z[nz]
-
-    compressedData = sign_z * (np.log(1 + mu * abs_z) / np.log(1 + mu))
-
-    quantizationLevels = 2 ** (bitWidth - 2)
-    stepSize = 1.0 / (quantizationLevels - 2)
-
-    noiseMultiplier_map = {8: 0.25, 9: 0.20, 10: 0.18, 12: 0.15, 14: 0.10}
-    noiseMultiplier = noiseMultiplier_map.get(bitWidth, 0.25)
-
-    noise = stepSize * noiseMultiplier * rng.standard_normal(size=compressedData.shape)
-    qscale = (quantizationLevels - 2)
-    quantizedData = np.round((compressedData + noise) * qscale) / qscale
-
-    decompressionScaling = 1 + 0.03 * noiseMultiplier
-    abs_q = np.abs(quantizedData)
-
-    sign_q = np.zeros_like(quantizedData)
-    nzq = abs_q > 0
-    sign_q[nzq] = quantizedData[nzq] / abs_q[nzq]
-
-    decompressedData = sign_q * (1 / mu) * ((1 + mu) ** abs_q - 1)
-    decompressedData = decompressedData * decompressionScaling
-    compressed = decompressedData * maxVal
-
-    originalBitWidth = 32
-    compressedSize = quantizedData.size * bitWidth
-    originalSize = data.size * originalBitWidth
-    CR = originalSize / compressedSize
-
-    return compressed.astype(np.complex128), float(CR)
-
-
-def modulation_compression(data: np.ndarray, bitWidth: int, modOrder: int):
-    data = np.asarray(data).reshape(-1).astype(np.complex128)
-    maxValue = np.max(np.abs(data))
-    if maxValue == 0:
-        return {"compressed": np.zeros_like(data), "CR": 1.0, "EVM": 0.0}
-
-    normalizedData = data / maxValue
-    compressed = normalizedData * maxValue
-
-    originalBitWidth = 32
-    numSymbols = data.size
-    originalSize = numSymbols * originalBitWidth
-    compressedSize = numSymbols * (bitWidth + np.log2(modOrder))
-    CR = originalSize / compressedSize
-
-    return {"compressed": compressed, "CR": float(CR), "EVM": 0.0}
 
 
 def plot_cr_vs_bitwidth_all_techniques(results, modulationOrders, mod_labels):
@@ -329,7 +171,16 @@ def run_compression_analysis():
 
         for modOrder in modulationOrders:
             dataBits = rng.integers(0, modOrder, size=numSamples, dtype=np.int32)
-            IQ_samples = qammod_from_integers(dataBits, modOrder)
+            IQ_ideal = qammod_from_integers(dataBits, modOrder)
+
+            # --- NEW: fixed-point reference signal (align with thesis-like IQ assumptions) ---
+            # Option A (recommended): fixed full-scale per modulation so comparisons are stable
+            # Use the peak amplitude of the ideal constellation as full-scale
+            fs_mod = float(np.max(np.abs(constellation_unit_power(modOrder))))
+            IQ_samples = make_fixed_point_reference_iq(IQ_ideal, iq_in_bitwidth=16, fs=fs_mod)
+
+            # If you prefer per-realization FS (less stable across runs), use:
+            # IQ_samples = make_fixed_point_reference_iq(IQ_ideal, iq_in_bitwidth=16, fs=None)
 
             for bitWidth in bitWidths:
                 print(f"  Processing {mod_labels[modOrder]}, Bitwidth: {bitWidth}")
@@ -341,24 +192,24 @@ def run_compression_analysis():
                     EVM = compRes["EVM"]
                 elif methodName == "BFP":
                     compressed, CR = bfp_compression(IQ_samples, bitWidth, modOrder, blockSize=blockSize)
-                    EVM = compute_evm_percent(IQ_samples, compressed, modOrder, methodName)
+                    EVM = compute_evm_percent(IQ_samples, compressed, methodName)
                 elif methodName == "BlockScaling":
-                    compressed, CR = bsc_compression(IQ_samples, bitWidth, modOrder, blockSize=blockSize)
-                    EVM = compute_evm_percent(IQ_samples, compressed, modOrder, methodName)
+                    compressed, CR = bsc_compression(IQ_samples, bitWidth, modOrder, blockSize=blockSize, fs=fs_mod)
+                    EVM = compute_evm_percent(IQ_samples, compressed, methodName)
                 elif methodName == "MuLaw":
                     compressed, CR = mu_law_compression(IQ_samples, bitWidth, modOrder)
-                    EVM = compute_evm_percent(IQ_samples, compressed, modOrder, methodName)
+                    EVM = compute_evm_percent(IQ_samples, compressed, methodName)
                 else:
                     raise ValueError("Unknown method")
 
-                originalSize = IQ_samples.size * originalBitWidth
-                compressedSize = IQ_samples.size * bitWidth
+                originalSizeBits = IQ_samples.size * 64
+                compressedSizeBits = originalSizeBits / CR
 
                 results[mIdx]["bitWidth"].append(bitWidth)
                 results[mIdx]["CR"].append(CR)
                 results[mIdx]["EVM"].append(EVM)
-                results[mIdx]["originalSize"].append(originalSize / 1e3)
-                results[mIdx]["compressedSize"].append(compressedSize / 1e3)
+                results[mIdx]["originalSize"].append(originalSizeBits / 1e3)
+                results[mIdx]["compressedSize"].append(compressedSizeBits / 1e3)
                 results[mIdx]["modulationOrder"].append(modOrder)
 
                 print(f"    CR: {CR:.2f}, EVM: {EVM:.2f}%")
