@@ -1,0 +1,1 @@
+HELLO GNU RADIOHELLO USRP B210HELLO SINGLE CARRIER TESTThis is a test message for verifyingwireless transmission and reception.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzThe quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.End of message.
