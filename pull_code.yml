@@ -1,0 +1,14 @@
+# ansible-playbook -i inventory.yaml -l Test pull_code.ym
+---
+- name: Pull GitHub repo on ceiling
+  hosts: Test
+  tasks:
+    - name: Clone Quantize_aware_experiments repo via HTTPS
+      become: true
+      become_user: pi
+      ansible.builtin.git:
+        repo: "https://github.com/Agata872/Low_signal_resolution_extended.git"
+        dest: "/home/pi/Low_signal_resolution_extended.git"
+        version: "master"
+        update: true
+        force: true
