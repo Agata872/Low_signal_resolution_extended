@@ -77,7 +77,7 @@ class qpsk_Rx(gr.top_block):
         self.digital_constellation_decoder_cb_0 = digital.constellation_decoder_cb(qpsk)
         self.blocks_unpack_k_bits_bb_0 = blocks.unpack_k_bits_bb(2)
         self.blocks_repack_bits_bb_0 = blocks.repack_bits_bb(1, 8, "packet_len", False, gr.GR_MSB_FIRST)
-        self.blocks_file_sink_0_0 = blocks.file_sink(gr.sizeof_char*1, 'D:\\Documents\\Pycharm_Files\\USRP-B210-test-with-modulation\\Updated_config\\QPSK\\rx.bin', False)
+        self.blocks_file_sink_0_0 = blocks.file_sink(gr.sizeof_char*1, "/home/pi/Low_signal_resolution_extended.git/QPSK/rx.bin", False)
         self.blocks_file_sink_0_0.set_unbuffered(False)
 
 
