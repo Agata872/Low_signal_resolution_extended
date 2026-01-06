@@ -3,11 +3,11 @@
 - name: Pull GitHub repo on ceiling
   hosts: Test
   tasks:
-    - name: Clone Quantize_aware_experiments repo via HTTPS
+    - name: Clone Low_signal_resolution_extended repo via HTTPS
       become: true
       become_user: pi
       ansible.builtin.git:
-        repo: "https://github.com/Agata872/Low_signal_resolution_extended.git"
+        repo: "https://github.com/Agata872/Low_signal_resolution_extended"
         dest: "/home/pi/Low_signal_resolution_extended.git"
         version: "master"
         update: true
