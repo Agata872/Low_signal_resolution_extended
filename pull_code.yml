@@ -1,4 +1,4 @@
-# ansible-playbook -i inventory.yaml -l Test pull_code.ym
+# ansible-playbook -i inventory.yaml -l Test pull_code.yml
 ---
 - name: Pull GitHub repo on ceiling
   hosts: Test
@@ -7,7 +7,7 @@
       become: true
       become_user: pi
       ansible.builtin.git:
-        repo: "https://github.com/Agata872/Low_signal_resolution_extended"
+        repo: "https://github.com/Agata872/Low_signal_resolution_extended.git"
         dest: "/home/pi/Low_signal_resolution_extended.git"
         version: "master"
         update: true
