@@ -34,7 +34,7 @@ class qpsk_Rx(gr.top_block):
         ##################################################
         self.sps = sps = 4
         self.qpsk = qpsk = digital.constellation_qpsk().base()
-        self.qpsk.set_npwr(1)
+        # self.qpsk.set_npwr(1)
         self.nfilts = nfilts = 32
         self.variable_adaptive_algorithm_0 = variable_adaptive_algorithm_0 = digital.adaptive_algorithm_cma( qpsk, .0001, 4).base()
         self.taps = taps = [1.0, 0.25-0.25j, 0.50 + 0.10j, -0.3 + 0.2j]
