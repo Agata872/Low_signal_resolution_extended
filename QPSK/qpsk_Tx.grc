@@ -9,7 +9,7 @@ options:
     description: packet transmit
     gen_cmake: 'On'
     gen_linking: dynamic
-    generate_options: qt_gui
+    generate_options: no_gui
     hier_block_src_path: '.:'
     id: qpsk_Tx
     max_nouts: '0'
@@ -77,6 +77,18 @@ blocks:
     bus_structure: null
     coordinate: [1384, 12.0]
     rotation: 0
+    state: disabled
+- name: const
+  id: variable
+  parameters:
+    comment: ''
+    value: '0.8'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [848, 100.0]
+    rotation: 0
     state: enabled
 - name: excess_bw
   id: variable
@@ -110,7 +122,7 @@ blocks:
     bus_structure: null
     coordinate: [1224, 4.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: hdr_format
   id: variable
   parameters:
@@ -636,7 +648,7 @@ blocks:
     bus_structure: null
     coordinate: [872, 768.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: uhd_usrp_sink_0_0
   id: uhd_usrp_sink
   parameters:
@@ -748,9 +760,9 @@ blocks:
     clock_source6: ''
     clock_source7: ''
     comment: ''
-    dev_addr: '"serial=31DB555"'
+    dev_addr: '"serial=31DB557"'
     dev_args: '""'
-    gain0: gain
+    gain0: '50'
     gain1: '0'
     gain10: '0'
     gain11: '0'
@@ -962,4 +974,4 @@ connections:
 
 metadata:
   file_format: 1
-  grc_version: 3.10.10.0
+  grc_version: 3.10.9.2

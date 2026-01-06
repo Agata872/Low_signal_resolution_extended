@@ -9,6 +9,6 @@
       ansible.builtin.git:
         repo: "https://github.com/Agata872/Low_signal_resolution_extended.git"
         dest: "/home/pi/Low_signal_resolution_extended.git"
-        version: "master"
+        version: "RPI"
         update: true
         force: true
