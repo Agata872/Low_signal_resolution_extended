@@ -1,0 +1,30 @@
+# ansible-playbook -i inventory.yaml -l T07 pull_bins.yml
+---
+- name: Fetch tx.bin and rx.bin from RPI to controller
+  hosts: Test
+  become: true
+  become_user: pi
+
+  vars:
+    repo_dir: "/home/pi/Low_signal_resolution_extended.git"
+    qpsk_dir: "{{ repo_dir }}/QPSK"
+    # 存到控制机（运行 ansible-playbook 的机器）上，playbook 同目录下的 bins/
+    server_dest_root: "{{ playbook_dir }}/bins"
+
+  tasks:
+    - name: Ensure destination directory exists on controller
+      ansible.builtin.file:
+        path: "{{ server_dest_root }}/{{ inventory_hostname }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      become: false
+
+    - name: Fetch tx.bin and rx.bin to controller
+      ansible.builtin.fetch:
+        src: "{{ qpsk_dir }}/{{ item }}"
+        dest: "{{ server_dest_root }}/{{ inventory_hostname }}/"
+        flat: true
+      loop:
+        - "tx.bin"
+        - "rx.bin"

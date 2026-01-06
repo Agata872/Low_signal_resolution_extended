@@ -47,7 +47,7 @@ class qpsk_Tx(gr.top_block):
         self.length_tag_key = length_tag_key = 'packet_len'
         self.hdr_format = hdr_format = digital.header_format_default(access_key, 1)
         self.excess_bw = excess_bw = 0.35
-        self.const = const = 0.8
+        self.const = const = 0.1
         self.center_freq = center_freq = 920e6
 
         ##################################################
