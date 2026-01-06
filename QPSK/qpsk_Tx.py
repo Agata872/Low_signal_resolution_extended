@@ -42,7 +42,7 @@ class qpsk_Tx(gr.top_block):
         self.samp_rate = samp_rate = 250000
         self.rs_ratio = rs_ratio = 1.040
         self.qpsk = qpsk = digital.constellation_qpsk().base()
-        self.qpsk.set_npwr(1)
+        # self.qpsk.set_npwr(1)
         self.packet_len = packet_len = 90
         self.length_tag_key = length_tag_key = 'packet_len'
         self.hdr_format = hdr_format = digital.header_format_default(access_key, 1)
