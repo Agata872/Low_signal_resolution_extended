@@ -247,7 +247,7 @@ blocks:
     alias: ''
     append: 'False'
     comment: ''
-    file: D:\Documents\Pycharm_Files\Low_signal_resolution_extended\QPSK\pre_comp.bin
+    file: D:\Documents\Pycharm_Files\Low_signal_resolution_extended\QPSK\bin\pre-comp.bin
     type: complex
     unbuffered: 'False'
     vlen: '1'
@@ -305,7 +305,7 @@ blocks:
     alias: ''
     begin_tag: pmt.PMT_NIL
     comment: ''
-    file: D:\Documents\Pycharm_Files\Low_signal_resolution_extended\QPSK\post_comp.bin
+    file: D:\Documents\Pycharm_Files\Low_signal_resolution_extended\QPSK\bin\post-comp.bin
     length: '0'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -332,7 +332,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1512, 1188.0]
+    coordinate: [1512, 1084.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_const_vxx_0
@@ -370,7 +370,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1056, 1172.0]
+    coordinate: [1032, 1076.0]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_tagged_stream_0
@@ -582,7 +582,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [648, 1120.0]
+    coordinate: [672, 1040.0]
     rotation: 0
     state: enabled
 - name: uhd_usrp_sink_0_0

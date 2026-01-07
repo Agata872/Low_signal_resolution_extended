@@ -308,7 +308,7 @@ class qpsk_Rx(gr.top_block, Qt.QWidget):
         self.digital_crc32_bb_0 = digital.crc32_bb(True, 'packet_len', True)
         self.digital_costas_loop_cc_0 = digital.costas_loop_cc(phase_bw, arity, False)
         self.digital_correlate_access_code_xx_ts_0 = digital.correlate_access_code_bb_ts(access_key,
-          3, 'packet_len')
+          5, 'packet_len')
         self.digital_constellation_decoder_cb_0 = digital.constellation_decoder_cb(qpsk)
         self.blocks_unpack_k_bits_bb_0 = blocks.unpack_k_bits_bb(2)
         self.blocks_repack_bits_bb_0 = blocks.repack_bits_bb(1, 8, "packet_len", False, gr.GR_MSB_FIRST)

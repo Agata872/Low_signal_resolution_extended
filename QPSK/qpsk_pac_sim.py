@@ -164,7 +164,7 @@ class qpsk_pac_sim(gr.top_block, Qt.QWidget):
         self.blocks_probe_rate_0 = blocks.probe_rate(gr.sizeof_gr_complex*1, 500.0, 0.15, '')
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(const)
         self.blocks_message_debug_0 = blocks.message_debug(True, gr.log_levels.info)
-        self.blocks_file_source_1 = blocks.file_source(gr.sizeof_gr_complex*1, 'D:\\Documents\\Pycharm_Files\\Low_signal_resolution_extended\\QPSK\\post_comp.bin', True, 0, 0)
+        self.blocks_file_source_1 = blocks.file_source(gr.sizeof_gr_complex*1, 'D:\\Documents\\Pycharm_Files\\Low_signal_resolution_extended\\QPSK\\bin\\post-comp.bin', True, 0, 0)
         self.blocks_file_source_1.set_begin_tag(pmt.PMT_NIL)
         self.blocks_add_xx_0 = blocks.add_vcc(1)
         self.analog_noise_source_x_0 = analog.noise_source_c(analog.GR_GAUSSIAN, 0.00, 0)

@@ -422,7 +422,7 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: '0'
     tagname: packet_len
-    threshold: '3'
+    threshold: '5'
     type: byte
   states:
     bus_sink: false
