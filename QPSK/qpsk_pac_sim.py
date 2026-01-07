@@ -5,9 +5,8 @@
 # SPDX-License-Identifier: GPL-3.0
 #
 # GNU Radio Python Flow Graph
-# Title: qpsk_Tx.grc
+# Title: qpsk_pac_sim
 # Author: Tianzheng
-# Description: packet transmit
 # GNU Radio version: 3.10.10.0
 
 from PyQt5 import Qt
@@ -33,12 +32,12 @@ import sip
 
 
 
-class qpsk_Tx(gr.top_block, Qt.QWidget):
+class qpsk_pac_sim(gr.top_block, Qt.QWidget):
 
     def __init__(self):
-        gr.top_block.__init__(self, "qpsk_Tx.grc", catch_exceptions=True)
+        gr.top_block.__init__(self, "qpsk_pac_sim", catch_exceptions=True)
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("qpsk_Tx.grc")
+        self.setWindowTitle("qpsk_pac_sim")
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -56,7 +55,7 @@ class qpsk_Tx(gr.top_block, Qt.QWidget):
         self.top_grid_layout = Qt.QGridLayout()
         self.top_layout.addLayout(self.top_grid_layout)
 
-        self.settings = Qt.QSettings("GNU Radio", "qpsk_Tx")
+        self.settings = Qt.QSettings("GNU Radio", "qpsk_pac_sim")
 
         try:
             geometry = self.settings.value("geometry")
@@ -79,7 +78,7 @@ class qpsk_Tx(gr.top_block, Qt.QWidget):
         self.hdr_format = hdr_format = digital.header_format_default(access_key, 1)
         self.gain = gain = 55
         self.excess_bw = excess_bw = 0.35
-        self.const = const = 0.1
+        self.const = const = 0.2
         self.center_freq = center_freq = 920e6
 
         ##################################################
@@ -89,7 +88,7 @@ class qpsk_Tx(gr.top_block, Qt.QWidget):
         self._gain_range = qtgui.Range(0, 100, 1, 55, 200)
         self._gain_win = qtgui.RangeWidget(self._gain_range, self.set_gain, "'gain'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._gain_win)
-        self._const_range = qtgui.Range(0, 1, 0.01, 0.1, 200)
+        self._const_range = qtgui.Range(0, 1, 0.01, 0.2, 200)
         self._const_win = qtgui.RangeWidget(self._const_range, self.set_const, "'const'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._const_win)
         self.uhd_usrp_sink_0_0 = uhd.usrp_sink(
@@ -162,28 +161,11 @@ class qpsk_Tx(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 3):
             self.top_grid_layout.setColumnStretch(c, 1)
-        self.digital_protocol_formatter_bb_0 = digital.protocol_formatter_bb(hdr_format, length_tag_key)
-        self.digital_crc32_bb_0 = digital.crc32_bb(False, length_tag_key, True)
-        self.digital_constellation_modulator_0 = digital.generic_mod(
-            constellation=qpsk,
-            differential=True,
-            samples_per_symbol=sps,
-            pre_diff_code=True,
-            excess_bw=excess_bw,
-            verbose=False,
-            log=False,
-            truncate=False)
-        self.blocks_tagged_stream_mux_0 = blocks.tagged_stream_mux(gr.sizeof_char*1, length_tag_key, 0)
-        self.blocks_tag_gate_0 = blocks.tag_gate(gr.sizeof_gr_complex * 1, False)
-        self.blocks_tag_gate_0.set_single_key("")
-        self.blocks_stream_to_tagged_stream_0 = blocks.stream_to_tagged_stream(gr.sizeof_char, 1, packet_len, length_tag_key)
         self.blocks_probe_rate_0 = blocks.probe_rate(gr.sizeof_gr_complex*1, 500.0, 0.15, '')
         self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(const)
         self.blocks_message_debug_0 = blocks.message_debug(True, gr.log_levels.info)
-        self.blocks_file_source_0 = blocks.file_source(gr.sizeof_char*1, 'D:\\Documents\\Pycharm_Files\\Low_signal_resolution_extended\\QPSK\\tx_raw.bin', True, 0, 0)
-        self.blocks_file_source_0.set_begin_tag(pmt.PMT_NIL)
-        self.blocks_file_sink_0_0 = blocks.file_sink(gr.sizeof_char*1, 'D:\\Documents\\Pycharm_Files\\Low_signal_resolution_extended\\QPSK\\tx.bin', False)
-        self.blocks_file_sink_0_0.set_unbuffered(True)
+        self.blocks_file_source_1 = blocks.file_source(gr.sizeof_gr_complex*1, 'D:\\Documents\\Pycharm_Files\\Low_signal_resolution_extended\\QPSK\\post_comp.bin', True, 0, 0)
+        self.blocks_file_source_1.set_begin_tag(pmt.PMT_NIL)
         self.blocks_add_xx_0 = blocks.add_vcc(1)
         self.analog_noise_source_x_0 = analog.noise_source_c(analog.GR_GAUSSIAN, 0.00, 0)
 
@@ -196,20 +178,12 @@ class qpsk_Tx(gr.top_block, Qt.QWidget):
         self.connect((self.blocks_add_xx_0, 0), (self.blocks_probe_rate_0, 0))
         self.connect((self.blocks_add_xx_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.blocks_add_xx_0, 0), (self.uhd_usrp_sink_0_0, 0))
-        self.connect((self.blocks_file_source_0, 0), (self.blocks_file_sink_0_0, 0))
-        self.connect((self.blocks_file_source_0, 0), (self.blocks_stream_to_tagged_stream_0, 0))
+        self.connect((self.blocks_file_source_1, 0), (self.blocks_multiply_const_vxx_0, 0))
         self.connect((self.blocks_multiply_const_vxx_0, 0), (self.blocks_add_xx_0, 0))
-        self.connect((self.blocks_stream_to_tagged_stream_0, 0), (self.digital_crc32_bb_0, 0))
-        self.connect((self.blocks_tag_gate_0, 0), (self.blocks_multiply_const_vxx_0, 0))
-        self.connect((self.blocks_tagged_stream_mux_0, 0), (self.digital_constellation_modulator_0, 0))
-        self.connect((self.digital_constellation_modulator_0, 0), (self.blocks_tag_gate_0, 0))
-        self.connect((self.digital_crc32_bb_0, 0), (self.blocks_tagged_stream_mux_0, 1))
-        self.connect((self.digital_crc32_bb_0, 0), (self.digital_protocol_formatter_bb_0, 0))
-        self.connect((self.digital_protocol_formatter_bb_0, 0), (self.blocks_tagged_stream_mux_0, 0))
 
 
     def closeEvent(self, event):
-        self.settings = Qt.QSettings("GNU Radio", "qpsk_Tx")
+        self.settings = Qt.QSettings("GNU Radio", "qpsk_pac_sim")
         self.settings.setValue("geometry", self.saveGeometry())
         self.stop()
         self.wait()
@@ -254,8 +228,6 @@ class qpsk_Tx(gr.top_block, Qt.QWidget):
 
     def set_packet_len(self, packet_len):
         self.packet_len = packet_len
-        self.blocks_stream_to_tagged_stream_0.set_packet_len(self.packet_len)
-        self.blocks_stream_to_tagged_stream_0.set_packet_len_pmt(self.packet_len)
 
     def get_length_tag_key(self):
         return self.length_tag_key
@@ -268,7 +240,6 @@ class qpsk_Tx(gr.top_block, Qt.QWidget):
 
     def set_hdr_format(self, hdr_format):
         self.hdr_format = hdr_format
-        self.digital_protocol_formatter_bb_0.set_header_format(self.hdr_format)
 
     def get_gain(self):
         return self.gain
@@ -300,7 +271,7 @@ class qpsk_Tx(gr.top_block, Qt.QWidget):
 
 
 
-def main(top_block_cls=qpsk_Tx, options=None):
+def main(top_block_cls=qpsk_pac_sim, options=None):
 
     qapp = Qt.QApplication(sys.argv)
 

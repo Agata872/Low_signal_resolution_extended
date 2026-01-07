@@ -69,27 +69,6 @@ blocks:
     coordinate: [1400, 16.0]
     rotation: 0
     state: enabled
-- name: delay
-  id: variable_qtgui_range
-  parameters:
-    comment: ''
-    gui_hint: 1,0,1,1
-    label: Delay
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '0'
-    step: '1'
-    stop: '200'
-    value: '58'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [0, 1256.0]
-    rotation: 0
-    state: disabled
 - name: eq_gain
   id: variable_qtgui_range
   parameters:
@@ -123,27 +102,6 @@ blocks:
     coordinate: [456, 24.0]
     rotation: 0
     state: enabled
-- name: freq_offset
-  id: variable_qtgui_range
-  parameters:
-    comment: ''
-    gui_hint: 'controls@0: 0,1,1,1'
-    label: Frequency Offset
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '-0.1'
-    step: '0.001'
-    stop: '0.1'
-    value: '0'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [304, 1232.0]
-    rotation: 0
-    state: disabled
 - name: gain
   id: variable_qtgui_range
   parameters:
@@ -156,7 +114,7 @@ blocks:
     start: '0'
     step: '1'
     stop: '100'
-    value: '55'
+    value: '50'
     widget: counter_slider
   states:
     bus_sink: false
@@ -177,27 +135,6 @@ blocks:
     coordinate: [864, 32.0]
     rotation: 0
     state: enabled
-- name: noise_volt
-  id: variable_qtgui_range
-  parameters:
-    comment: ''
-    gui_hint: 'controls@0: 0,0,1,1'
-    label: Noise Voltage
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '0'
-    step: '0.01'
-    stop: '1'
-    value: '0.0001'
-    widget: eng_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [0, 1048.0]
-    rotation: 0
-    state: disabled
 - name: packet_len
   id: variable
   parameters:
@@ -231,26 +168,6 @@ blocks:
     coordinate: [176, 496.0]
     rotation: 0
     state: enabled
-- name: qpsk
-  id: variable_constellation_rect
-  parameters:
-    comment: ''
-    const_points: '[0.707+0.707j, -0.707+0.707j, -0.707-0.707j, 0.707-0.707j]'
-    imag_sect: '2'
-    precision: '8'
-    real_sect: '2'
-    rot_sym: '4'
-    soft_dec_lut: None
-    sym_map: '[0, 1, 2, 3]'
-    w_imag_sect: '1'
-    w_real_sect: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [616, 1172.0]
-    rotation: 0
-    state: disabled
 - name: qpsk
   id: variable_constellation
   parameters:
@@ -287,7 +204,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '250000'
+    value: '200000'
   states:
     bus_sink: false
     bus_source: false
@@ -319,27 +236,6 @@ blocks:
     coordinate: [600, 16.0]
     rotation: 0
     state: enabled
-- name: time_offset
-  id: variable_qtgui_range
-  parameters:
-    comment: ''
-    gui_hint: 'controls@0: 0,2,1,1'
-    label: Timing Offset
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    rangeType: float
-    start: '0.999'
-    step: '0.0001'
-    stop: '1.001'
-    value: '1.00'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [296, 1032.0]
-    rotation: 0
-    state: disabled
 - name: timing_loop_bw
   id: variable_qtgui_range
   parameters:
@@ -375,7 +271,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [32, 760.0]
+    coordinate: [32, 808.0]
     rotation: 0
     state: true
 - name: blocks_char_to_float_0
@@ -392,7 +288,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [736, 588.0]
+    coordinate: [848, 604.0]
     rotation: 0
     state: enabled
 - name: blocks_char_to_float_0_0
@@ -419,7 +315,7 @@ blocks:
     alias: ''
     append: 'False'
     comment: ''
-    file: D:\Documents\Pycharm_Files\USRP-B210-test-with-modulation\Updated_config\QPSK\rx.bin
+    file: D:\Documents\Pycharm_Files\Low_signal_resolution_extended\QPSK\rx.bin
     type: byte
     unbuffered: 'False'
     vlen: '1'
@@ -463,7 +359,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [368, 692.0]
+    coordinate: [392, 708.0]
     rotation: 0
     state: enabled
 - name: controls
@@ -513,7 +409,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [960, 500.0]
+    coordinate: [1056, 468.0]
     rotation: 180
     state: true
 - name: digital_correlate_access_code_xx_ts_0
@@ -550,7 +446,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1344, 492.0]
+    coordinate: [1504, 484.0]
     rotation: 180
     state: enabled
 - name: digital_crc32_bb_0
@@ -585,7 +481,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [824, 384.0]
+    coordinate: [816, 376.0]
     rotation: 180
     state: enabled
 - name: digital_linear_equalizer_0
@@ -622,7 +518,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [448, 492.0]
+    coordinate: [504, 500.0]
     rotation: 180
     state: enabled
 - name: digital_pfb_clock_sync_xxx_0
@@ -648,25 +544,6 @@ blocks:
     coordinate: [496, 248.0]
     rotation: 0
     state: enabled
-- name: note_0
-  id: note
-  parameters:
-    alias: ''
-    comment: 'The CMA equalizer has been
-
-      replaced by a Linear Equalizer
-
-      and an Adaptive Algorithm for
-
-      version 3.9'
-    note: CMA equalizer replaced
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [16, 900.0]
-    rotation: 0
-    state: true
 - name: qtgui_const_sink_x_0
   id: qtgui_const_sink_x
   parameters:
@@ -756,7 +633,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1192, 352.0]
+    coordinate: [1328, 352.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0
@@ -853,7 +730,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [984, 572.0]
+    coordinate: [1088, 572.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0_0
@@ -950,7 +827,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1536, 924.0]
+    coordinate: [1544, 892.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_1
@@ -1006,7 +883,7 @@ blocks:
     marker7: '-1'
     marker8: '-1'
     marker9: '-1'
-    name: '""'
+    name: '"recived signal"'
     nconnections: '1'
     size: '1024'
     srate: samp_rate
@@ -1047,9 +924,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [584, 796.0]
+    coordinate: [656, 876.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: received
   id: qtgui_tab_widget
   parameters:
@@ -1259,7 +1136,7 @@ blocks:
     dc_offs_enb7: default
     dc_offs_enb8: default
     dc_offs_enb9: default
-    dev_addr: '"serial=31D4A23"'
+    dev_addr: '"serial=31DB5AB"'
     dev_args: '""'
     gain0: gain
     gain1: '0'
