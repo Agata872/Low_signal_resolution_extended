@@ -49,7 +49,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 920e6
+    value: 915e6
   states:
     bus_sink: false
     bus_source: false
@@ -859,7 +859,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1392, 856.0]
+    coordinate: [1344, 816.0]
     rotation: 0
     state: enabled
 - name: virtual_sink_0_0

@@ -79,7 +79,7 @@ class qpsk_pac_sim(gr.top_block, Qt.QWidget):
         self.gain = gain = 55
         self.excess_bw = excess_bw = 0.35
         self.const = const = 0.2
-        self.center_freq = center_freq = 920e6
+        self.center_freq = center_freq = 915e6
 
         ##################################################
         # Blocks

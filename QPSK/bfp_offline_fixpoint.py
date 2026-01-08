@@ -15,7 +15,7 @@ COMP_UDCOMPPARAM_FILE = "bin/bfp_udCompParam_u8.bin" # 1 byte per block (low 4 b
 
 BLOCK_LEN = 12        # PRB size in the doc (12 samples) :contentReference[oaicite:4]{index=4}
 WIQIN = 16            # input IQ bitwidth (e.g., 16-bit signed)
-WIQOUT = 6            # output compressed IQ width = (sign + mantissa) in bits :contentReference[oaicite:5]{index=5}
+WIQOUT = 16            # output compressed IQ width = (sign + mantissa) in bits :contentReference[oaicite:5]{index=5}
 WEXP = 4              # exponent bits (usually 4, range 0..15) :contentReference[oaicite:6]{index=6}
 
 CLIP_INPUT = True     # clip float IQ to [-1, 1) before fixed-point quantization

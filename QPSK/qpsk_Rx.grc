@@ -61,7 +61,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 920e6
+    value: 915e6
   states:
     bus_sink: false
     bus_source: false
@@ -308,6 +308,24 @@ blocks:
     coordinate: [1192, 940.0]
     rotation: 0
     state: enabled
+- name: blocks_file_sink_0
+  id: blocks_file_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    append: 'False'
+    comment: ''
+    file: D:\Documents\Pycharm_Files\Low_signal_resolution_extended\QPSK\evm\evm_wiqout16.bin
+    type: float
+    unbuffered: 'True'
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1744, 572.0]
+    rotation: 0
+    state: enabled
 - name: blocks_file_sink_0_0
   id: blocks_file_sink
   parameters:
@@ -323,7 +341,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1704, 692.0]
+    coordinate: [1720, 692.0]
     rotation: 0
     state: enabled
 - name: blocks_repack_bits_bb_0
@@ -520,6 +538,23 @@ blocks:
     bus_structure: null
     coordinate: [504, 500.0]
     rotation: 180
+    state: enabled
+- name: digital_meas_evm_cc_0
+  id: digital_meas_evm_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    cons: qpsk
+    maxoutbuf: '0'
+    meas_type: digital.evm_measurement_t.EVM_PERCENT
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1472, 632.0]
+    rotation: 0
     state: enabled
 - name: digital_pfb_clock_sync_xxx_0
   id: digital_pfb_clock_sync_xxx
@@ -827,7 +862,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1544, 892.0]
+    coordinate: [1472, 916.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_1
@@ -1408,11 +1443,13 @@ connections:
 - [digital_constellation_decoder_cb_0, '0', digital_diff_decoder_bb_0, '0']
 - [digital_correlate_access_code_xx_ts_0, '0', blocks_repack_bits_bb_0, '0']
 - [digital_costas_loop_cc_0, '0', digital_constellation_decoder_cb_0, '0']
+- [digital_costas_loop_cc_0, '0', digital_meas_evm_cc_0, '0']
 - [digital_costas_loop_cc_0, '0', qtgui_const_sink_x_0, '0']
 - [digital_crc32_bb_0, '0', blocks_file_sink_0_0, '0']
 - [digital_diff_decoder_bb_0, '0', digital_map_bb_0, '0']
 - [digital_linear_equalizer_0, '0', digital_costas_loop_cc_0, '0']
 - [digital_map_bb_0, '0', blocks_unpack_k_bits_bb_0, '0']
+- [digital_meas_evm_cc_0, '0', blocks_file_sink_0, '0']
 - [digital_pfb_clock_sync_xxx_0, '0', digital_linear_equalizer_0, '0']
 - [uhd_usrp_source_0_0, '0', digital_pfb_clock_sync_xxx_0, '0']
 - [uhd_usrp_source_0_0, '0', qtgui_time_sink_x_1, '0']
