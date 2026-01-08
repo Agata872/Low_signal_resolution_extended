@@ -5,23 +5,28 @@ import os
 import numpy as np
 
 # ================= USER CONFIG =================
-INFILE = "bin/pre-comp.bin"           # input complex64 IQ (float32 I/Q)
-OUTFILE = "bin/post-comp.bin"         # output complex64 IQ (float32 I/Q)
+INFILE = "bin/pre-comp.bin"   # input complex64 IQ (float32 I/Q)
 
-# Optional: write "compressed payload" for debugging / inspection
+OUT_DIR = "bfp"
 WRITE_COMPRESSED = True
-COMP_MANTISSA_FILE = "bin/bfp_mantissa_iq_i16.bin"   # interleaved I,Q int16 per sample
-COMP_UDCOMPPARAM_FILE = "bin/bfp_udCompParam_u8.bin" # 1 byte per block (low 4 bits exponent)
 
-BLOCK_LEN = 12        # PRB size in the doc (12 samples) :contentReference[oaicite:4]{index=4}
-WIQIN = 16            # input IQ bitwidth (e.g., 16-bit signed)
-WIQOUT = 16            # output compressed IQ width = (sign + mantissa) in bits :contentReference[oaicite:5]{index=5}
-WEXP = 4              # exponent bits (usually 4, range 0..15) :contentReference[oaicite:6]{index=6}
+BLOCK_LEN = 12
+WIQIN = 16
+WIQOUT_LIST = [4, 6, 8, 10, 12, 14, 16]
 
-CLIP_INPUT = True     # clip float IQ to [-1, 1) before fixed-point quantization
+WEXP = 4                 # exponent bits (low 4 bits in udCompParam)
+CLIP_INPUT = True
+
+# Normalization:
+#   "maxabs"   -> scale = max(|x|)
+#   "quantile" -> scale = quantile(|x|, AGC_Q)
+AGC_MODE = "maxabs"
+AGC_Q = 0.999
+AGC_EPS = 1e-12
 # ===============================================
 
 
+# ---------------- I/O helpers ----------------
 def read_c64(path: str) -> np.ndarray:
     if not os.path.exists(path):
         raise FileNotFoundError(f"Input file not found: {path}")
@@ -34,11 +39,12 @@ def read_c64(path: str) -> np.ndarray:
 
 
 def write_c64(path: str, x: np.ndarray) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     x.astype(np.complex64, copy=False).tofile(path)
 
 
+# ---------------- math helpers ----------------
 def _sat_signed(x: np.ndarray, bits: int) -> np.ndarray:
-    """Saturate to signed two's-complement range for given bitwidth."""
     lo = -(1 << (bits - 1))
     hi = (1 << (bits - 1)) - 1
     return np.clip(x, lo, hi)
@@ -47,6 +53,7 @@ def _sat_signed(x: np.ndarray, bits: int) -> np.ndarray:
 def _to_fixed_iq(x: np.ndarray, wiqin: int, clip_input: bool) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Map float IQ in ~[-1,1) to signed WIQIN-bit integers using full-scale S=2^(WIQIN-1)-1.
+    Return (I_int32, Q_int32, S_float).
     """
     S = float((1 << (wiqin - 1)) - 1)
 
@@ -54,33 +61,53 @@ def _to_fixed_iq(x: np.ndarray, wiqin: int, clip_input: bool) -> tuple[np.ndarra
     xi = x.imag.astype(np.float32, copy=False)
 
     if clip_input:
-        # keep within representable range
         xr = np.clip(xr, -1.0, 1.0 - 1.0 / S)
         xi = np.clip(xi, -1.0, 1.0 - 1.0 / S)
 
     I = np.round(xr * S).astype(np.int32)
     Q = np.round(xi * S).astype(np.int32)
 
-    # saturate to WIQIN range (safety)
     I = _sat_signed(I, wiqin).astype(np.int32)
     Q = _sat_signed(Q, wiqin).astype(np.int32)
     return I, Q, S
 
 
-def bfp_compress_algorithm1(I: np.ndarray, Q: np.ndarray,
-                            block_len: int, wiqin: int, wiqout: int, wexp: int):
+def _normalize(x: np.ndarray) -> tuple[np.ndarray, float]:
     """
-    Exact doc logic (3.2.1 Algorithm 1):
-      maxV/minV over I and Q in block
-      maxValue = max(maxV, abs(minV)-1)   (two's complement adjust)
+    Return (x_norm, scale) where x = x_norm * scale.
+    """
+    if AGC_MODE.lower() == "quantile":
+        a = np.abs(x)
+        scale = float(np.quantile(a, AGC_Q))
+    else:
+        scale = float(np.max(np.abs(x)))
+
+    if not np.isfinite(scale) or scale < AGC_EPS:
+        scale = 1.0
+    return x / scale, scale
+
+
+# ---------------- BFP (doc-exact Algorithm 1 + Eq.10) ----------------
+def bfp_compress_algorithm1(
+    I: np.ndarray,
+    Q: np.ndarray,
+    block_len: int,
+    wiqin: int,
+    wiqout: int,
+    wexp: int,
+):
+    """
+    Doc logic (3.2.1 Algorithm 1):
+      maxV/minV over I,Q in block
+      maxValue = max(maxV, abs(minV)-1)
       msb = floor(log2(maxValue)+1)
       exponent = max(msb - mantissa_size, 0)
       compressed = value * 2^{-exponent}  (arithmetic right shift)
-    Here mantissa_size = wiqout - 1 (since wiqout includes sign bit). :contentReference[oaicite:7]{index=7}
+    mantissa_size = wiqout - 1 (wiqout includes sign bit)
+    udCompParam: 1 byte, low 4 bits exponent.
     """
     assert wiqout >= 2, "WIQOUT must include sign + at least 1 mantissa bit"
     mantissa_size = wiqout - 1
-
     e_max = (1 << wexp) - 1
 
     n_blocks = len(I) // block_len
@@ -93,14 +120,16 @@ def bfp_compress_algorithm1(I: np.ndarray, Q: np.ndarray,
     I = I[:n_use]
     Q = Q[:n_use]
 
-    # store mantissas as int16 (still ok even if wiqout<16)
     I_m = np.empty(n_use, dtype=np.int16)
     Q_m = np.empty(n_use, dtype=np.int16)
     ud = np.empty(n_blocks, dtype=np.uint8)
 
-    # representable range for wiqout-bit signed
     lo_out = -(1 << (wiqout - 1))
     hi_out = (1 << (wiqout - 1)) - 1
+
+    clip_cnt_I = 0
+    clip_cnt_Q = 0
+    total_cnt = 0
 
     for b in range(n_blocks):
         s = b * block_len
@@ -109,18 +138,15 @@ def bfp_compress_algorithm1(I: np.ndarray, Q: np.ndarray,
 
         maxV = int(max(Ie.max(), Qe.max()))
         minV = int(min(Ie.min(), Qe.min()))
-
-        # maxValue = max(maxV, |minV| - 1)  (doc's two's complement adjustment) :contentReference[oaicite:8]{index=8}
         maxValue = max(maxV, abs(minV) - 1)
 
         if maxValue <= 0:
             exponent = 0
         else:
-            msb = int(np.floor(np.log2(maxValue) + 1.0))  # msb = floor(log2(maxValue)+1) :contentReference[oaicite:9]{index=9}
-            exponent = max(msb - mantissa_size, 0)        # exponent = max(msb - mantissa_size, 0) :contentReference[oaicite:10]{index=10}
-            exponent = min(exponent, e_max)               # 4-bit range 0..15 via udCompParam :contentReference[oaicite:11]{index=11}
+            msb = int(np.floor(np.log2(maxValue) + 1.0))
+            exponent = max(msb - mantissa_size, 0)
+            exponent = min(exponent, e_max)
 
-        # arithmetic right shift by exponent (equiv *2^{-exponent}) :contentReference[oaicite:12]{index=12}
         if exponent == 0:
             Ic = Ie
             Qc = Qe
@@ -128,25 +154,35 @@ def bfp_compress_algorithm1(I: np.ndarray, Q: np.ndarray,
             Ic = Ie >> exponent
             Qc = Qe >> exponent
 
-        # Safety saturate to WIQOUT signed range (should rarely trigger if exponent computed as doc)
-        Ic = np.clip(Ic, lo_out, hi_out).astype(np.int16)
-        Qc = np.clip(Qc, lo_out, hi_out).astype(np.int16)
+        # track clipping (should be rare if exponent is correct, but keep diagnostics)
+        preI = Ic
+        preQ = Qc
+        Ic = np.clip(Ic, lo_out, hi_out)
+        Qc = np.clip(Qc, lo_out, hi_out)
 
-        I_m[s:s + block_len] = Ic
-        Q_m[s:s + block_len] = Qc
+        clip_cnt_I += np.count_nonzero(preI != Ic)
+        clip_cnt_Q += np.count_nonzero(preQ != Qc)
+        total_cnt += Ic.size
 
-        # udCompParam: 1 byte, lower 4 bits exponent, upper 4 bits reserved :contentReference[oaicite:13]{index=13}
+        I_m[s:s + block_len] = Ic.astype(np.int16)
+        Q_m[s:s + block_len] = Qc.astype(np.int16)
         ud[b] = np.uint8(exponent & 0x0F)
 
-    return I_m, Q_m, ud, n_use
+    clip_rate_I = float(clip_cnt_I / total_cnt) if total_cnt else 0.0
+    clip_rate_Q = float(clip_cnt_Q / total_cnt) if total_cnt else 0.0
+    return I_m, Q_m, ud, n_use, clip_rate_I, clip_rate_Q
 
 
-def bfp_decompress_eq10(I_m: np.ndarray, Q_m: np.ndarray, ud: np.ndarray,
-                        block_len: int, wiqin: int, wiqout: int, wexp: int,
-                        S: float) -> np.ndarray:
+def bfp_decompress_eq10(
+    I_m: np.ndarray,
+    Q_m: np.ndarray,
+    ud: np.ndarray,
+    block_len: int,
+    wiqin: int,
+    S: float,
+) -> np.ndarray:
     """
-    Exact doc inverse (Eq. 10): IQ_i = m_i * 2^e (left shift). :contentReference[oaicite:14]{index=14}
-    Then map back to float by dividing full-scale S.
+    Eq.10 inverse: IQ = mantissa * 2^e (left shift), then /S to float.
     """
     n_use = len(I_m)
     n_blocks = len(ud)
@@ -154,7 +190,6 @@ def bfp_decompress_eq10(I_m: np.ndarray, Q_m: np.ndarray, ud: np.ndarray,
 
     x_hat = np.empty(n_use, dtype=np.complex64)
 
-    # reconstruct to WIQIN-bit domain (int32)
     for b in range(n_blocks):
         s = b * block_len
         e = int(ud[b] & 0x0F)
@@ -166,7 +201,6 @@ def bfp_decompress_eq10(I_m: np.ndarray, Q_m: np.ndarray, ud: np.ndarray,
             Ie = Ie << e
             Qe = Qe << e
 
-        # saturate to WIQIN signed range (safety)
         Ie = _sat_signed(Ie, wiqin).astype(np.int32)
         Qe = _sat_signed(Qe, wiqin).astype(np.int32)
 
@@ -177,54 +211,77 @@ def bfp_decompress_eq10(I_m: np.ndarray, Q_m: np.ndarray, ud: np.ndarray,
     return x_hat
 
 
+# ---------------- progress bar ----------------
+def _progress(i: int, n: int, prefix: str = "") -> None:
+    width = 28
+    frac = (i + 1) / n
+    filled = int(round(width * frac))
+    bar = "#" * filled + "-" * (width - filled)
+    print(f"\r{prefix}[{bar}] {i+1}/{n} ({frac*100:5.1f}%)", end="", flush=True)
+    if i + 1 == n:
+        print()
+
+
+# ---------------- main sweep ----------------
 def main():
-    print("[INFO] Offline BFP (doc-exact Algorithm 1 + Eq.10)")
-    print(f"  Input    : {INFILE}")
-    print(f"  Output   : {OUTFILE}")
-    print(f"  BLOCK_LEN: {BLOCK_LEN}")
-    print(f"  WIQIN    : {WIQIN}")
-    print(f"  WIQOUT   : {WIQOUT}  (includes sign)")
-    print(f"  WEXP     : {WEXP}")
+    os.makedirs(OUT_DIR, exist_ok=True)
+
+    print("[INFO] Offline BFP sweep (doc-exact Algorithm 1 + Eq.10)")
+    print(f"  Input     : {INFILE}")
+    print(f"  Out dir   : {OUT_DIR}")
+    print(f"  BLOCK_LEN : {BLOCK_LEN}")
+    print(f"  WIQIN     : {WIQIN}")
+    print(f"  WIQOUTs   : {WIQOUT_LIST}")
+    print(f"  WEXP      : {WEXP}")
+    print(f"  Clip input: {CLIP_INPUT}")
+    print(f"  AGC_MODE  : {AGC_MODE} (Q={AGC_Q} if quantile)")
 
     x = read_c64(INFILE)
-    print(f"[OK] Read {x.size} samples")
-    # ======== AGC / NORMALIZATION 加在这里 ========
-    a = np.abs(x)
-    scale = np.quantile(a, 0.999)  # 推荐 0.999 或 0.9999
-    x = x / scale
-    print("[INFO] AGC scale =", scale)
+    print(f"[OK] Read {x.size} complex64 samples")
 
-    I, Q, S = _to_fixed_iq(x, WIQIN, CLIP_INPUT)
+    x_n, scale = _normalize(x)
+    print(f"[INFO] Normalization scale = {scale:g}")
 
-    I_m, Q_m, ud, n_use = bfp_compress_algorithm1(
-        I, Q, BLOCK_LEN, WIQIN, WIQOUT, WEXP
-    )
+    I, Q, S = _to_fixed_iq(x_n, WIQIN, CLIP_INPUT)
 
-    # (Optional) dump compressed payload: mantissas + udCompParam
-    if WRITE_COMPRESSED:
-        os.makedirs(os.path.dirname(COMP_MANTISSA_FILE), exist_ok=True)
-        # interleave I,Q mantissas: [I0,Q0,I1,Q1,...]
-        inter = np.empty(2 * n_use, dtype=np.int16)
-        inter[0::2] = I_m
-        inter[1::2] = Q_m
-        inter.tofile(COMP_MANTISSA_FILE)
-        ud.tofile(COMP_UDCOMPPARAM_FILE)
-        print(f"[OK] Wrote compressed mantissas : {COMP_MANTISSA_FILE}")
-        print(f"[OK] Wrote udCompParam (u8)    : {COMP_UDCOMPPARAM_FILE}")
+    n_total = len(WIQOUT_LIST)
+    for idx, wiqout in enumerate(WIQOUT_LIST):
+        _progress(idx, n_total, prefix="Running ")
 
-    x_hat = bfp_decompress_eq10(
-        I_m, Q_m, ud, BLOCK_LEN, WIQIN, WIQOUT, WEXP, S
-    )
-    x_hat = x_hat * scale
-    write_c64(OUTFILE, x_hat)
-    print(f"[OK] Wrote {x_hat.size} samples")
+        I_m, Q_m, ud, n_use, clipI, clipQ = bfp_compress_algorithm1(
+            I, Q, BLOCK_LEN, WIQIN, wiqout, WEXP
+        )
 
-    p_in = np.mean(np.abs(x[:x_hat.size]) ** 2)
-    p_out = np.mean(np.abs(x_hat) ** 2)
-    print(f"[INFO] Power in/out: {p_in:.6g} -> {p_out:.6g} (ratio {p_out/p_in:.6g})")
+        if WRITE_COMPRESSED:
+            mant_path = os.path.join(OUT_DIR, f"mantissa_iq_wiqout{wiqout}.i16")
+            ud_path = os.path.join(OUT_DIR, f"udCompParam_wiqout{wiqout}.u8")
 
-    # quick sanity: exponent stats
-    print(f"[INFO] Exponent stats: min={int(ud.min() & 0x0F)} max={int(ud.max() & 0x0F)}")
+            inter = np.empty(2 * n_use, dtype=np.int16)
+            inter[0::2] = I_m
+            inter[1::2] = Q_m
+            inter.tofile(mant_path)
+            ud.tofile(ud_path)
+
+        x_hat_n = bfp_decompress_eq10(I_m, Q_m, ud, BLOCK_LEN, WIQIN, S)
+        x_hat = x_hat_n * scale
+
+        out_path = os.path.join(OUT_DIR, f"rx_wiqout{wiqout}.bin")
+        write_c64(out_path, x_hat)
+
+        p_in = float(np.mean(np.abs(x[:x_hat.size]) ** 2))
+        p_out = float(np.mean(np.abs(x_hat) ** 2))
+        ratio = (p_out / p_in) if p_in > 0 else float("nan")
+
+        e_min = int((ud.min() & 0x0F)) if ud.size else 0
+        e_max = int((ud.max() & 0x0F)) if ud.size else 0
+
+        print(
+            f"[WIQOUT={wiqout:2d}] wrote {out_path} | "
+            f"clip(I,Q)=({clipI*100:.2f}%,{clipQ*100:.2f}%) | "
+            f"power ratio={ratio:.6g} | exp[min,max]=[{e_min},{e_max}]"
+        )
+
+    print("[DONE] All WIQOUT sweeps finished.")
 
 
 if __name__ == "__main__":
