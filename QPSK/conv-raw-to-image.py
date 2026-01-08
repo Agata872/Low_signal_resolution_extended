@@ -1,21 +1,24 @@
 import numpy as np
 from PIL import Image
 
-H = W = 512
-preamble = bytes([0xDE, 0xAD, 0xBE, 0xEF]) * 8
+H = W = 1024
+INFILE = "bsc/rx_wiqout12.bin"  # 或 bfp/...
+OUTPNG = "rx.png"
 
-data = open("rx.bin", "rb").read()
-pos = data.find(preamble)
-if pos == -1:
-    raise RuntimeError("没找到 preamble：可能接收端没收到完整同步头，或你TX没发带preamble的文件")
+x = np.fromfile(INFILE, dtype=np.complex64)
+I = x.real.astype(np.float32)
 
-start = pos + len(preamble)
-img_bytes = data[start:start + H*W]
+need = H*W
+I = I[:need]  # 只取原始长度，忽略 padding
 
-# 不足就 pad，保证能 reshape
-if len(img_bytes) < H*W:
-    img_bytes += bytes([0]) * (H*W - len(img_bytes))
+# float -> int16 域
+I16_hat = np.rint(I * 32768.0).astype(np.int32)
+I16_hat = np.clip(I16_hat, -32768, 32767).astype(np.int32)
 
-img = np.frombuffer(img_bytes, dtype=np.uint8).reshape(H, W)
-Image.fromarray(img).save("rx.png")
-print("saved rx.png")
+# 逆变换回像素（与编码严格匹配）
+pix_hat = (I16_hat >> 8) + 128
+pix_hat = np.clip(pix_hat, 0, 255).astype(np.uint8)
+
+img = pix_hat.reshape(H, W)
+Image.fromarray(img, mode="L").save(OUTPNG)
+print("[OK] saved", OUTPNG)

@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 # ================= USER CONFIG =================
-INFILE = "bin/pre-comp.bin"   # input complex64 IQ (float32 I/Q)
+INFILE = "tx/pre-comp.bin"   # input complex64 IQ (float32 I/Q)
 
 OUT_DIR = "bfp"
 WRITE_COMPRESSED = True
