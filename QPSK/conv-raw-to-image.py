@@ -2,7 +2,7 @@ import numpy as np
 from PIL import Image
 
 H = W = 1024
-INFILE = "bsc/rx_wiqout16.bin"  # 或 bfp/...
+INFILE = "mulaw/rx_wiqout12.bin"  # 或 bfp/...
 OUTPNG = "rx.png"
 
 x = np.fromfile(INFILE, dtype=np.complex64)
